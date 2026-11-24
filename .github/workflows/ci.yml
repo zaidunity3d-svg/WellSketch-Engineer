@@ -3,9 +3,10 @@
 # upload an APK/AAB. The Gradle build also blocks :app packaging tasks without owner approval.
 name: CI – unit tests (no APK)
 
+# Pull requests run once per commit; main gets a post-merge run.
 on:
   push:
-    branches-ignore:
+    branches:
       - main
   pull_request:
 

@@ -7,9 +7,7 @@ import com.wellsketch.engineer.core.data.repository.EquipmentCatalogRepository
 import com.wellsketch.engineer.core.data.repository.InMemoryEquipmentCatalogRepository
 import com.wellsketch.engineer.core.data.repository.ProjectAutosaver
 import com.wellsketch.engineer.core.data.repository.WellProjectRepository
-import com.wellsketch.engineer.core.database.DemoDataSeeder
-import com.wellsketch.engineer.core.database.RoomWellProjectRepository
-import com.wellsketch.engineer.core.database.WellSketchDatabase
+import com.wellsketch.engineer.core.database.LocalStorage
 import com.wellsketch.engineer.core.model.units.UnitSystem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,9 +25,9 @@ class AppContainer(context: Context) {
     /** Application-wide scope for work that must outlive screens (autosave, seeding). */
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val database = WellSketchDatabase.build(context)
+    private val storage = LocalStorage(context)
 
-    val wellProjects: WellProjectRepository = RoomWellProjectRepository(database.wellProjectDao())
+    val wellProjects: WellProjectRepository = storage.wellProjects
 
     /** Synthetic placeholder catalog until validated datasets are imported. */
     val equipmentCatalog: EquipmentCatalogRepository = InMemoryEquipmentCatalogRepository(SyntheticEquipmentCatalog.items)
@@ -47,7 +45,7 @@ class AppContainer(context: Context) {
 
     init {
         appScope.launch {
-            DemoDataSeeder(database.wellProjectDao()).seedIfEmpty(System.currentTimeMillis())
+            storage.seedDemoDataIfEmpty(System.currentTimeMillis())
         }
     }
 }

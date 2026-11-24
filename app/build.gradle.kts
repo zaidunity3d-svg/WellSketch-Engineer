@@ -11,8 +11,11 @@ android {
         applicationId = "com.wellsketch.engineer"
         versionCode = 1
         versionName = "0.1.0-milestone1"
+    }
+
+    androidResources {
         // English-only product: do not package translations shipped by libraries.
-        resourceConfigurations += listOf("en")
+        localeFilters += listOf("en")
     }
 
     buildTypes {
