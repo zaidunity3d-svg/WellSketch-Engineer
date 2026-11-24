@@ -32,7 +32,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Compile all modules and run unit tests
-        run: ./gradlew test --stacktrace --no-configuration-cache
+        run: ./gradlew test --continue --stacktrace --no-configuration-cache
 
       - name: Upload test reports
         if: always()
