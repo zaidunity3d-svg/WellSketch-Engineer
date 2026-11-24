@@ -92,6 +92,7 @@ class WellSchematicBuilder(
 
     private fun addOpenHole(ctx: WellGeometryContext, out: MutableList<SchematicElement>) {
         ctx.well.holeSections.forEach { h ->
+            if (ctx.canonical(h.bottom) < ctx.canonical(h.top)) return@forEach // reported by validator
             out += SchematicElement(
                 id = "hole:${h.id}", sourceId = h.id, kind = ElementKind.OPEN_HOLE, label = h.name,
                 mdTop = ctx.canonical(h.top).meters, mdBottom = ctx.canonical(h.bottom).meters,
@@ -110,6 +111,9 @@ class WellSchematicBuilder(
         val top = ctx.canonical(s.top).meters
         val shoe = ctx.canonical(s.shoe.depth).meters
         val od = s.spec.outerDiameter.meters
+        // Inverted intervals can exist transiently while the user types; they are reported by
+        // the validator (CASING_INTERVAL) and simply not drawn, so the sketch never crashes.
+        if (shoe < top) return
         out += SchematicElement(
             id = "casing:${s.id}", sourceId = s.id, kind = ElementKind.CASING_WALL, label = s.name,
             mdTop = top, mdBottom = shoe,
@@ -143,7 +147,7 @@ class WellSchematicBuilder(
         out: MutableList<SchematicElement>,
     ) {
         val tubing = completion.tubingString
-        tubing?.let { t ->
+        tubing?.takeIf { ctx.canonical(it.endOfTubing) >= ctx.canonical(it.hangerDepth) }?.let { t ->
             out += SchematicElement(
                 id = "tubing:${t.id}", sourceId = t.id, kind = ElementKind.TUBING_WALL, label = t.name,
                 mdTop = ctx.canonical(t.hangerDepth).meters, mdBottom = ctx.canonical(t.endOfTubing).meters,
@@ -153,6 +157,7 @@ class WellSchematicBuilder(
         completion.components.forEach { c ->
             val top = ctx.canonical(c.top).meters
             val bottom = top + c.length.meters
+            if (bottom < top) return@forEach
             val host = resolver.innermostStringAt((top + bottom) / 2.0)
             val hostIdRadius = host?.spec?.innerDiameter?.meters?.div(2.0)
             val (inner, outer) = when (c.mounting) {
@@ -181,6 +186,7 @@ class WellSchematicBuilder(
             val host = ctx.well.casingStrings.firstOrNull { it.id == p.hostStringId } ?: return@forEach
             val top = ctx.canonical(p.top).meters
             val bottom = ctx.canonical(p.bottom).meters
+            if (bottom < top) return@forEach // reported by validator
             val hole = resolver.holeRadiusAt((top + bottom) / 2.0) ?: (host.spec.outerDiameter.meters / 2.0)
             out += SchematicElement(
                 id = "perf:${p.id}", sourceId = p.id, kind = ElementKind.PERFORATION,

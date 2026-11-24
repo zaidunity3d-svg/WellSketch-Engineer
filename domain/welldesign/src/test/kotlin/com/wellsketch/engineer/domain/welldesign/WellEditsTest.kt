@@ -56,3 +56,27 @@ class WellEditsTest {
         assertTrue(s.availableStates == listOf(CompletionState.CURRENT))
     }
 }
+
+class TransientInputTest {
+    @Test
+    fun shoeTypedAboveCasingTopDoesNotCrashAndIsReported() {
+        // While typing "1500" the first keystroke gives a shoe at 1 m, above the casing top (9 m RKB).
+        val well = SyntheticDemoProjects.vertical().well
+        val id = well.casingStrings.last().id
+        val edited = assertIs<EditOutcome.Applied>(WellEdits.setCasingShoe(well, id, MeasuredDepth.rkb(Length.meters(1.0)))).well
+        val snapshot = WellDesignSession().snapshot(edited, CompletionState.CURRENT, null)
+        assertTrue(snapshot.scene.elements.none { it.id == "casing:$id" })
+        assertTrue(snapshot.scene.issues.any { it.code == "CASING_INTERVAL" })
+    }
+
+    @Test
+    fun endOfTubingTypedAboveHangerDoesNotCrash() {
+        val well = SyntheticDemoProjects.vertical().well
+        val edited = assertIs<EditOutcome.Applied>(
+            WellEdits.setEndOfTubing(well, CompletionState.CURRENT, MeasuredDepth.rkb(Length.meters(2.0))),
+        ).well
+        val snapshot = WellDesignSession().snapshot(edited, CompletionState.CURRENT, null)
+        assertTrue(snapshot.scene.elements.none { it.kind == ElementKind.TUBING_WALL })
+        assertTrue(snapshot.scene.issues.any { it.code == "TUBING_INTERVAL" })
+    }
+}
