@@ -65,9 +65,21 @@ class SchematicProjection(
     val columnLeft: Double = config.margin
     val columnRight: Double = config.columnWidth
 
-    /** Pixels per metre for surface equipment inside the band above GL. */
-    val surfaceScale: Double =
-        if (scene.surfaceHeight > 0) max(0.0, config.surfaceBandHeight - config.margin) / scene.surfaceHeight else 0.0
+    /**
+     * Pixels per metre for surface equipment inside the band above GL. Limited so that the
+     * tallest stack fits the band height and the widest spread fits the full screen width
+     * (the band lies above GL, so it may extend over the formation column).
+     */
+    val surfaceScale: Double = run {
+        if (scene.surfaceBlocks.isEmpty() || scene.surfaceHeight <= 0.0) return@run 0.0
+        val axisX = x0 + path.first().x * pathScale
+        var scale = max(0.0, config.surfaceBandHeight - config.margin) / scene.surfaceHeight
+        val leftExtent = scene.surfaceBlocks.maxOf { it.width / 2.0 - it.centerOffset }
+        val rightExtent = scene.surfaceBlocks.maxOf { it.centerOffset + it.width / 2.0 }
+        if (leftExtent > 0) scale = min(scale, max(0.0, axisX - config.margin) / leftExtent)
+        if (rightExtent > 0) scale = min(scale, max(0.0, width - config.margin - axisX) / rightExtent)
+        scale
+    }
 
     fun map(x: Double, tvdBelowGl: Double) = ScreenPoint(x0 + x * pathScale, groundY + tvdBelowGl * pathScale)
 

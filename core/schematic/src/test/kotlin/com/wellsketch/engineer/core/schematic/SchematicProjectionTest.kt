@@ -75,3 +75,22 @@ class SchematicProjectionTest {
         assertEquals(casing.id, hit.id)
     }
 }
+
+class SurfaceProjectionTest {
+    @Test
+    fun fullCtSpreadFitsInsideNarrowViewport() {
+        val project = SyntheticDemoProjects.jShaped()
+        val state = com.wellsketch.engineer.core.model.surface.OperatingState.CoiledTubingIntervention(
+            project.well.christmasTree!!, project.ctOperations.single().rigUp,
+        )
+        val base = WellSchematicBuilder().build(project.well, CompletionState.CURRENT, state)
+        val scene = base.copy(surfaceBlocks = SurfaceLayouts.forOperatingState(state, CtSurfaceViewMode.FULL))
+        val p = SchematicProjection(scene, 720.0, 1400.0, ProjectionConfig(columnWidth = 160.0, surfaceBandHeight = 320.0))
+        assertTrue(p.surfaceScale > 0.0)
+        for (b in scene.surfaceBlocks) {
+            val r = p.surfaceRect(b)
+            assertTrue(r[0] >= 0.0 && r[2] <= 720.0, "${b.kind} x ${r[0]}..${r[2]}")
+            assertTrue(r[1] >= 0.0 && r[3] <= p.groundY + 1e-9, "${b.kind} y ${r[1]}..${r[3]}")
+        }
+    }
+}
