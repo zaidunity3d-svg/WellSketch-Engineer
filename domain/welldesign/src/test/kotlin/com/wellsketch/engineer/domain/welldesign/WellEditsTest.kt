@@ -80,3 +80,22 @@ class TransientInputTest {
         assertTrue(snapshot.scene.issues.any { it.code == "TUBING_INTERVAL" })
     }
 }
+
+class EndOfTubingEditTest {
+    @Test
+    fun entryGuideAtEndOfTubingMovesWithItAndOtherComponentsStay() {
+        val well = SyntheticDemoProjects.vertical().well
+        val before = well.completion(CompletionState.CURRENT)!!
+        val edited = assertIs<EditOutcome.Applied>(
+            WellEdits.setEndOfTubing(well, CompletionState.CURRENT, MeasuredDepth.rkb(Length.meters(2150.0))),
+        ).well
+        val after = edited.completion(CompletionState.CURRENT)!!
+        val guide = after.components.single { it.type == com.wellsketch.engineer.core.model.well.CompletionComponentType.WIRELINE_ENTRY_GUIDE }
+        assertEquals(2150.0, (guide.top.value + guide.length).meters, 1e-9)
+        val packerBefore = before.components.single { it.type == com.wellsketch.engineer.core.model.well.CompletionComponentType.PACKER }
+        val packerAfter = after.components.single { it.id == packerBefore.id }
+        assertEquals(packerBefore.top, packerAfter.top)
+        val scene = WellDesignSession().snapshot(edited, CompletionState.CURRENT, null).scene
+        assertEquals(2150.0, scene.markers.single { it.kind == com.wellsketch.engineer.core.schematic.MarkerKind.END_OF_TUBING }.md, 1e-9)
+    }
+}

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
@@ -27,8 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue
@@ -126,6 +130,10 @@ fun IssueList(issues: List<ValidationIssue>, modifier: Modifier = Modifier) {
 /**
  * Numeric depth input in the selected unit system. The model value updates on every valid
  * keystroke (so the schematic redraws immediately); invalid text is flagged, not applied.
+ *
+ * While the field has focus its text is owned by the user: model updates that arrive after
+ * a keystroke never overwrite what is being typed. When focus leaves, the text is
+ * re-formatted from the model. The keyboard's Done key closes the keyboard.
  */
 @Composable
 fun DepthField(
@@ -135,11 +143,12 @@ fun DepthField(
     onValueChange: (Length) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
     var text by remember(formatter.system) { mutableStateOf(formatter.depthInput(value)) }
+    var focused by remember { mutableStateOf(false) }
     var invalid by remember { mutableStateOf(false) }
-    LaunchedEffect(value, formatter.system) {
-        val parsed = formatter.parseDepth(text)
-        if (parsed == null || !parsed.isApproximately(value, Length.meters(0.005))) {
+    LaunchedEffect(value, formatter.system, focused) {
+        if (!focused) {
             text = formatter.depthInput(value)
             invalid = false
         }
@@ -156,7 +165,10 @@ fun DepthField(
         suffix = { Text(formatter.depthUnit) },
         isError = invalid,
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        modifier = modifier.fillMaxWidth(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused },
     )
 }

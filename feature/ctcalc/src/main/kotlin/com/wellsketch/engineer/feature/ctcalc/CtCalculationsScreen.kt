@@ -13,30 +13,42 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
 import com.wellsketch.engineer.core.model.ct.CtOperation
 import com.wellsketch.engineer.core.model.datum.DepthReference
 import com.wellsketch.engineer.core.model.datum.MeasuredDepth
+import com.wellsketch.engineer.core.model.project.WellProject
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.UnitSystem
 import com.wellsketch.engineer.core.model.well.findObject
@@ -54,6 +66,7 @@ import com.wellsketch.engineer.core.ui.format.UnitFormatter
 import com.wellsketch.engineer.core.ui.schematic.WellSchematicCanvas
 import com.wellsketch.engineer.domain.ct.CtAnalysis
 import com.wellsketch.engineer.domain.ct.CtCalculationCatalog
+import kotlinx.coroutines.launch
 
 @Composable
 fun CtCalculationsScreen(viewModel: CtCalculationsViewModel, unitSystem: UnitSystem, onBack: () -> Unit) {
@@ -82,49 +95,84 @@ fun CtCalculationsScreen(viewModel: CtCalculationsViewModel, unitSystem: UnitSys
 
 @Composable
 private fun CtContent(state: CtUiState, op: CtOperation, analysis: CtAnalysis, f: UnitFormatter, onEvent: (CtEvent) -> Unit) {
+    val project = state.project ?: return
+    val ctx = remember(project.well) { WellGeometryContext(project.well) }
+    val schematic = @Composable { modifier: Modifier ->
+        WellSchematicCanvas(
+            scene = analysis.scene,
+            formatter = f,
+            selectedId = state.selectedElement?.id ?: state.selectedBlock?.sourceId,
+            onElementSelected = { onEvent(CtEvent.SelectElement(it)) },
+            onSurfaceBlockSelected = { onEvent(CtEvent.SelectBlock(it)) },
+            surfaceBandHeight = if (state.viewMode == CtSurfaceViewMode.FULL) 170.dp else 140.dp,
+            modifier = modifier,
+        )
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= 720.dp
-        val schematic = @Composable { modifier: Modifier ->
-            WellSchematicCanvas(
-                scene = analysis.scene,
-                formatter = f,
-                selectedId = state.selectedElement?.id ?: state.selectedBlock?.sourceId,
-                onElementSelected = { onEvent(CtEvent.SelectElement(it)) },
-                onSurfaceBlockSelected = { onEvent(CtEvent.SelectBlock(it)) },
-                surfaceBandHeight = if (state.viewMode == CtSurfaceViewMode.FULL) 170.dp else 140.dp,
-                modifier = modifier,
-            )
-        }
-        if (wide) {
+        if (maxWidth >= 720.dp) {
             Row(Modifier.fillMaxSize()) {
                 schematic(Modifier.weight(1f).fillMaxHeight())
-                CtPanel(state, op, analysis, f, onEvent, Modifier.width(380.dp).fillMaxHeight())
+                LazyColumn(
+                    modifier = Modifier.width(380.dp).fillMaxHeight().imePadding(),
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) { ctItems(state, project, op, analysis, ctx, f, onEvent) }
             }
         } else {
-            Column(Modifier.fillMaxSize()) {
-                schematic(Modifier.fillMaxWidth().weight(0.55f))
-                HorizontalDivider()
-                CtPanel(state, op, analysis, f, onEvent, Modifier.fillMaxWidth().weight(0.45f))
+            // Phone: one scrolling page; the sketch scrolls up so fields stay above the keyboard.
+            val sketchHeight = maxHeight * 0.72f
+            val listState = rememberLazyListState()
+            val scope = rememberCoroutineScope()
+            val sketchScrolledAway by remember { derivedStateOf { listState.firstVisibleItemIndex > 0 } }
+            Box(Modifier.fillMaxSize().imePadding()) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 72.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item(key = "sketch") { schematic(Modifier.fillMaxWidth().height(sketchHeight)) }
+                    item(key = "scroll-hint") {
+                        Text(
+                            "Scroll up for CT depth and data. The CT and BHA move instantly.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                        )
+                    }
+                    ctItems(state, project, op, analysis, ctx, f, onEvent, horizontalPadding = 12.dp)
+                }
+                if (sketchScrolledAway) {
+                    SmallFloatingActionButton(
+                        onClick = { scope.launch { listState.scrollToItem(0) } }, // instant, no animation
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                    ) {
+                        Row(Modifier.padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null)
+                            Text("Sketch", style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-@Composable
-private fun CtPanel(
+private fun LazyListScope.ctItems(
     state: CtUiState,
+    project: WellProject,
     op: CtOperation,
     analysis: CtAnalysis,
+    ctx: WellGeometryContext,
     f: UnitFormatter,
     onEvent: (CtEvent) -> Unit,
-    modifier: Modifier,
+    horizontalPadding: Dp = 0.dp,
 ) {
-    val project = state.project ?: return
+    val pad = Modifier.padding(horizontal = horizontalPadding)
     val well = project.well
-    val ctx = remember(well) { WellGeometryContext(well) }
     val canonical = ctx.canonicalReference.shortLabel
     val placement = analysis.placement
-    LazyColumn(modifier, contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    run {
         state.selectedElement?.let { element ->
             item {
                 val ctString = op.ctString.takeIf { it.id == element.sourceId }
@@ -152,6 +200,7 @@ private fun CtPanel(
                     provenance = details?.third,
                     onClose = { onEvent(CtEvent.ClearSelection) },
                     footnote = BREAKDOWN_PENDING_NOTE,
+                    modifier = pad,
                 )
             }
         }
@@ -176,14 +225,15 @@ private fun CtPanel(
                     provenance = component?.provenance,
                     onClose = { onEvent(CtEvent.ClearSelection) },
                     footnote = BREAKDOWN_PENDING_NOTE,
+                    modifier = pad,
                 )
             }
         }
         if (project.isSyntheticDemo) {
-            item { NoticeCard("Synthetic demonstration data. Not real well, CT string or equipment data.", warning = true) }
+            item { NoticeCard("Synthetic demonstration data. Not real well, CT string or equipment data.", pad, warning = true) }
         }
         item {
-            SectionCard("CT depth") {
+            SectionCard("CT depth", pad) {
                 Text("Depth reference for this operation", style = MaterialTheme.typography.labelMedium)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     DepthReferenceChoice.entries.forEach { choice ->
@@ -227,7 +277,7 @@ private fun CtPanel(
             }
         }
         item {
-            SectionCard("Surface view") {
+            SectionCard("Surface view", pad) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     CtSurfaceViewMode.entries.forEach { mode ->
                         FilterChip(
@@ -245,7 +295,7 @@ private fun CtPanel(
             }
         }
         item {
-            SectionCard("Placement") {
+            SectionCard("Placement", pad) {
                 LabeledValue("Nose MD (${op.depthReference.shortLabel})", f.depth(op.currentDepth))
                 LabeledValue("Nose MD ($canonical)", f.depth(placement.noseMd))
                 LabeledValue("Nose MD below GL", f.depth(placement.noseMdBelowGl))
@@ -258,7 +308,7 @@ private fun CtPanel(
             }
         }
         item {
-            SectionCard("Flow path (MD $canonical)") {
+            SectionCard("Flow path (MD $canonical)", pad) {
                 analysis.flowPath.segments.forEach { s ->
                     LabeledValue(
                         "${s.conduitType.label}: ${f.depth(s.topMd)} – ${f.depth(s.bottomMd)}",
@@ -268,7 +318,7 @@ private fun CtPanel(
             }
         }
         item {
-            SectionCard("Restrictions above the nose") {
+            SectionCard("Restrictions above the nose", pad) {
                 val smallest = analysis.passability.smallestRestriction
                 if (smallest?.innerDiameter != null) {
                     LabeledValue("Smallest restriction", smallest.label)
@@ -289,7 +339,7 @@ private fun CtPanel(
             }
         }
         item {
-            SectionCard("Pressure-control stack (top to bottom)") {
+            SectionCard("Pressure-control stack (top to bottom)", pad) {
                 op.rigUp.pressureControlStack.components.forEach { c ->
                     Text(c.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
                     LabeledValue("Bore / rating", "${f.diameter(c.bore)} / ${f.pressure(c.ratedWorkingPressure)}")
@@ -301,16 +351,16 @@ private fun CtPanel(
             }
         }
         item {
-            SectionCard("CT BHA (top to nose)") {
+            SectionCard("CT BHA (top to nose)", pad) {
                 op.bha.components.forEach { c ->
                     LabeledValue(c.name, "${f.depth(c.length)}, OD ${f.diameter(c.maxOuterDiameter)}")
                 }
                 LabeledValue("Total BHA length", f.depth(op.bha.totalLength))
             }
         }
-        item { SectionCard("Checks") { IssueList(analysis.issues) } }
+        item { SectionCard("Checks", pad) { IssueList(analysis.issues) } }
         item {
-            SectionCard("CT calculations (awaiting specification review)") {
+            SectionCard("CT calculations (awaiting specification review)", pad) {
                 CtCalculationCatalog.planned.forEach { c -> LabeledValue(c.title, "Not implemented") }
             }
         }

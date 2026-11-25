@@ -69,7 +69,7 @@ data class SchematicElement(
     }
 }
 
-enum class MarkerKind { CASING_SHOE, TOP_OF_CEMENT, LINER_TOP }
+enum class MarkerKind { CASING_SHOE, TOP_OF_CEMENT, LINER_TOP, END_OF_TUBING }
 
 /** A point marker at a depth (e.g. shoe triangle), drawn at [radius] on both sides. */
 data class SchematicMarker(

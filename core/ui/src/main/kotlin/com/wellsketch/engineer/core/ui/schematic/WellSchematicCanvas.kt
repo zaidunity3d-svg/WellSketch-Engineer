@@ -95,7 +95,8 @@ fun WellSchematicCanvas(
             null
         }
     }
-    val shapes = remember(projection) { projection?.let(::buildShapes).orEmpty() }
+    val minWallPx = with(density) { MIN_WALL_DP.dp.toPx().toDouble() }
+    val shapes = remember(projection, minWallPx) { projection?.let { buildShapes(it, minWallPx) }.orEmpty() }
     val onElement by rememberUpdatedState(onElementSelected)
     val onBlock by rememberUpdatedState(onSurfaceBlockSelected)
 
@@ -116,7 +117,7 @@ fun WellSchematicCanvas(
                     }
                     val located = p.locate(offset.x.toDouble(), offset.y.toDouble())
                     val hit = if (located.distanceFromAxisPx <= p.radialPx * 1.5) {
-                        SchematicHitTester.hitTest(p.scene, located.md, located.radius, radialTolerance = 3.0 / p.radialScale)
+                        SchematicHitTester.hitTest(p.scene, located.md, located.radius, radialTolerance = 6.0 / p.radialScale)
                     } else {
                         null
                     }
@@ -130,7 +131,7 @@ fun WellSchematicCanvas(
         drawDatums(p, textMeasurer)
         clipRect(left = p.columnRight.toFloat(), top = p.groundY.toFloat(), right = size.width, bottom = size.height) {
             shapes.forEach { drawElement(p, it, it.element.id == selectedId) }
-            drawMarkers(p)
+            drawMarkers(p, textMeasurer, formatter)
         }
         drawSurface(p, textMeasurer, selectedId)
         if (p.scene.trajectorySource == TrajectorySource.ASSUMED_VERTICAL) {
@@ -150,19 +151,31 @@ private class ElementShape(
     val gradientEnd: Offset,
 )
 
-private fun buildShapes(p: SchematicProjection): List<ElementShape> =
+/** Minimum on-screen wall thickness for casing, tubing and CT walls (drawing only). */
+private const val MIN_WALL_DP = 2.5f
+
+private val thinWallKinds = setOf(ElementKind.CASING_WALL, ElementKind.TUBING_WALL, ElementKind.CT_WALL)
+
+private fun buildShapes(p: SchematicProjection, minWallPx: Double): List<ElementShape> =
     p.scene.elementsInDrawOrder
         .filter { it.kind != ElementKind.PERFORATION }
         .map { e ->
             val mds = sampleMds(p, e.mdTop, e.mdBottom)
-            val paths = if (e.innerRadius <= 0.0) {
-                listOf(polygon(p, mds, e.outerRadius, -e.outerRadius))
+            // Real walls can be thinner than a pixel at schematic scale; draw them at least
+            // MIN_WALL_DP thick so strings and their ends stay visible. Geometry is unchanged.
+            val outer = if (e.kind in thinWallKinds && e.innerRadius > 0.0) {
+                maxOf(e.outerRadius, e.innerRadius + minWallPx / p.radialScale)
             } else {
-                listOf(polygon(p, mds, e.outerRadius, e.innerRadius), polygon(p, mds, -e.innerRadius, -e.outerRadius))
+                e.outerRadius
+            }
+            val paths = if (e.innerRadius <= 0.0) {
+                listOf(polygon(p, mds, outer, -outer))
+            } else {
+                listOf(polygon(p, mds, outer, e.innerRadius), polygon(p, mds, -e.innerRadius, -outer))
             }
             val mid = (mds.first() + mds.last()) / 2.0
-            val a = p.point(mid, -e.outerRadius)
-            val b = p.point(mid, e.outerRadius)
+            val a = p.point(mid, -outer)
+            val b = p.point(mid, outer)
             ElementShape(e, paths, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()))
         }
 
@@ -214,7 +227,7 @@ private fun DrawScope.drawElement(p: SchematicProjection, shape: ElementShape, s
     }
 }
 
-private fun DrawScope.drawMarkers(p: SchematicProjection) {
+private fun DrawScope.drawMarkers(p: SchematicProjection, tm: TextMeasurer, formatter: UnitFormatter) {
     // Perforation tunnels as spikes through casing and cement into the formation (symbolic length).
     p.scene.elements.filter { it.kind == ElementKind.PERFORATION }.forEach { e ->
         val color = SchematicPalette.elementColor(e)
@@ -254,7 +267,22 @@ private fun DrawScope.drawMarkers(p: SchematicProjection) {
                     val b = p.point(m.md, side * (m.radius + widthR * 0.8))
                     drawLine(SchematicPalette.ink, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), strokeWidth = 3.dp.toPx())
                 }
+                MarkerKind.END_OF_TUBING -> {
+                    val a = p.point(m.md, 0.0)
+                    val b = p.point(m.md, side * (m.radius + widthR))
+                    drawLine(Color(0xFF2E6F9E), Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), strokeWidth = 2.dp.toPx())
+                }
             }
+        }
+        // Depth labels on the right-hand side so edits are easy to see on the sketch.
+        val labelText = when (m.kind) {
+            MarkerKind.CASING_SHOE -> "Shoe ${formatter.depth(Length.meters(m.md))}"
+            MarkerKind.END_OF_TUBING -> "EOT ${formatter.depth(Length.meters(m.md))}"
+            else -> null
+        }
+        if (labelText != null) {
+            val anchor = p.point(m.md, m.radius + widthR)
+            label(tm, labelText, anchor.x.toFloat() + 3.dp.toPx(), anchor.y.toFloat() - 6.sp.toPx(), 110.dp.toPx(), SchematicPalette.ink)
         }
     }
 }
@@ -337,7 +365,7 @@ private fun DrawScope.drawDatums(p: SchematicProjection, tm: TextMeasurer) {
         val y = p.tvdToY(msl).toFloat()
         drawLine(SchematicPalette.mslLine, Offset(p.columnRight.toFloat(), y), Offset(size.width, y), strokeWidth = 1.dp.toPx(),
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 6f)))
-        label(tm, "MSL", size.width - 30.dp.toPx(), y - 13.sp.toPx(), 28.dp.toPx(), SchematicPalette.mslLine)
+        label(tm, "MSL", size.width - 30.dp.toPx(), y + 2.dp.toPx(), 28.dp.toPx(), SchematicPalette.mslLine)
     }
     if (p.surfaceScale > 0) {
         val y = groundY - (p.scene.datums.rkbAboveGl * p.surfaceScale).toFloat()

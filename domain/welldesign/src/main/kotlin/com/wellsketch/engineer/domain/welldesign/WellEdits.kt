@@ -3,6 +3,7 @@ package com.wellsketch.engineer.domain.welldesign
 import com.wellsketch.engineer.core.model.datum.MeasuredDepth
 import com.wellsketch.engineer.core.model.datum.TrueVerticalDepth
 import com.wellsketch.engineer.core.model.units.Length
+import com.wellsketch.engineer.core.model.well.ComponentMounting
 import com.wellsketch.engineer.core.model.well.CompletionState
 import com.wellsketch.engineer.core.model.well.TubingConfiguration
 import com.wellsketch.engineer.core.model.well.Well
@@ -75,7 +76,24 @@ object WellEdits {
         val installed = completion.tubing as? TubingConfiguration.Installed
             ?: return EditOutcome.Rejected("Completion has no tubing")
         if (endOfTubing.value < Length.ZERO) return EditOutcome.Rejected("Depth must not be negative")
-        val updated = completion.copy(tubing = installed.copy(tubing = installed.tubing.copy(endOfTubing = endOfTubing)))
+        val oldEnd = installed.tubing.endOfTubing
+        // Components hanging at the end of the tubing (e.g. the wireline entry guide) move
+        // with the end of tubing; components at other depths stay where they are.
+        val components = if (oldEnd.reference == endOfTubing.reference) {
+            val shift = endOfTubing.value - oldEnd.value
+            completion.components.map { c ->
+                val attachedToEnd = c.mounting == ComponentMounting.ON_TUBING &&
+                    c.top.reference == oldEnd.reference &&
+                    (c.top.value + c.length).isApproximately(oldEnd.value, Length.meters(0.001))
+                if (attachedToEnd) c.copy(top = MeasuredDepth(c.top.value + shift, c.top.reference)) else c
+            }
+        } else {
+            completion.components
+        }
+        val updated = completion.copy(
+            tubing = installed.copy(tubing = installed.tubing.copy(endOfTubing = endOfTubing)),
+            components = components,
+        )
         return EditOutcome.Applied(well.copy(completions = well.completions.map { if (it.state == state) updated else it }))
     }
 }

@@ -42,7 +42,7 @@ class WellSchematicBuilder(
 
         addOpenHole(ctx, elements)
         well.casingStrings.forEach { addCasing(ctx, resolver, it, elements, markers) }
-        completion?.let { addCompletion(ctx, resolver, it, elements) }
+        completion?.let { addCompletion(ctx, resolver, it, elements, markers) }
 
         val issues = validator.validate(ctx, completion).toMutableList()
         if (completionState != null && completion == null) {
@@ -145,6 +145,7 @@ class WellSchematicBuilder(
         resolver: GeometryResolver,
         completion: Completion,
         out: MutableList<SchematicElement>,
+        markers: MutableList<SchematicMarker>,
     ) {
         val tubing = completion.tubingString
         tubing?.takeIf { ctx.canonical(it.endOfTubing) >= ctx.canonical(it.hangerDepth) }?.let { t ->
@@ -152,6 +153,10 @@ class WellSchematicBuilder(
                 id = "tubing:${t.id}", sourceId = t.id, kind = ElementKind.TUBING_WALL, label = t.name,
                 mdTop = ctx.canonical(t.hangerDepth).meters, mdBottom = ctx.canonical(t.endOfTubing).meters,
                 innerRadius = t.spec.innerDiameter.meters / 2.0, outerRadius = t.spec.outerDiameter.meters / 2.0,
+            )
+            markers += SchematicMarker(
+                "eot:${t.id}", t.id, MarkerKind.END_OF_TUBING,
+                ctx.canonical(t.endOfTubing).meters, t.spec.outerDiameter.meters / 2.0, "End of tubing",
             )
         }
         completion.components.forEach { c ->
