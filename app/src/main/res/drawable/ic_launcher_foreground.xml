@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simple nested-casing half-cut glyph (original artwork). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#FFE09F3E" android:pathData="M30,34h48v3h-48z" />
+    <path android:fillColor="#FFD3E4F5" android:pathData="M38,37h4v40h-4z M66,37h4v40h-4z" />
+    <path android:fillColor="#FF9EB7CF" android:pathData="M44,37h3v46h-3z M61,37h3v46h-3z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M49,37h2v52h-2z M57,37h2v52h-2z" />
+    <path android:fillColor="#FFE09F3E" android:pathData="M53,37h2v42h-2z M51,79h6v6h-6z" />
+</vector>

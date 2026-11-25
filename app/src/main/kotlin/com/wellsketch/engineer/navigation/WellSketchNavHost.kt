@@ -1,0 +1,73 @@
+package com.wellsketch.engineer.navigation
+
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
+import com.wellsketch.engineer.AppContainer
+import com.wellsketch.engineer.feature.ctcalc.CtCalculationsScreen
+import com.wellsketch.engineer.feature.ctcalc.CtCalculationsViewModel
+import com.wellsketch.engineer.feature.equipment.EquipmentLibraryScreen
+import com.wellsketch.engineer.feature.equipment.EquipmentLibraryViewModel
+import com.wellsketch.engineer.feature.wellcalc.WellCalculationsScreen
+import com.wellsketch.engineer.feature.welldesign.WellDesignScreen
+import com.wellsketch.engineer.feature.welldesign.WellDesignViewModel
+import com.wellsketch.engineer.home.HomeScreen
+import com.wellsketch.engineer.home.HomeViewModel
+
+@Composable
+fun WellSketchNavHost(container: AppContainer) {
+    val navController = rememberNavController()
+    val unitSystem by container.unitSystem.collectAsStateWithLifecycle()
+
+    // Screen changes are instant: this engineering app avoids animated transitions entirely.
+    NavHost(
+        navController = navController,
+        startDestination = HomeRoute,
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+    ) {
+        composable<HomeRoute> {
+            val vm = viewModel { HomeViewModel(container.wellProjects) }
+            HomeScreen(
+                viewModel = vm,
+                unitSystem = unitSystem,
+                onUnitSystemChange = container::setUnitSystem,
+                onOpenWellDesign = { navController.navigate(WellDesignRoute(it)) },
+                onOpenWellCalculations = { navController.navigate(WellCalculationsRoute(it)) },
+                onOpenCtCalculations = { navController.navigate(CtCalculationsRoute(it)) },
+                onOpenEquipmentLibrary = { navController.navigate(EquipmentLibraryRoute) },
+            )
+        }
+        composable<WellDesignRoute> { entry ->
+            val route = entry.toRoute<WellDesignRoute>()
+            val vm = viewModel { WellDesignViewModel(route.projectId, container.wellProjects, container.autosaver) }
+            WellDesignScreen(vm, unitSystem, onBack = { navController.popBackStack() })
+        }
+        composable<WellCalculationsRoute> { entry ->
+            val route = entry.toRoute<WellCalculationsRoute>()
+            val summariesFlow = remember { container.wellProjects.observeProjectSummaries() }
+            val summaries by summariesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+            WellCalculationsScreen(
+                projectName = summaries.firstOrNull { it.id == route.projectId }?.name,
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable<CtCalculationsRoute> { entry ->
+            val route = entry.toRoute<CtCalculationsRoute>()
+            val vm = viewModel { CtCalculationsViewModel(route.projectId, container.wellProjects, container.autosaver) }
+            CtCalculationsScreen(vm, unitSystem, onBack = { navController.popBackStack() })
+        }
+        composable<EquipmentLibraryRoute> {
+            val vm = viewModel { EquipmentLibraryViewModel(container.equipmentCatalog) }
+            EquipmentLibraryScreen(vm, unitSystem, onBack = { navController.popBackStack() })
+        }
+    }
+}

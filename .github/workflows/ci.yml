@@ -1,0 +1,45 @@
+# Continuous integration: compiles every module and runs all unit tests.
+# Project policy (CLAUDE.md rule 4): this workflow must never assemble, bundle, sign or
+# upload an APK/AAB. The Gradle build also blocks :app packaging tasks without owner approval.
+name: CI – unit tests (no APK)
+
+# Pull requests run once per commit; main gets a post-merge run.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Validates the Gradle wrapper checksum and caches dependencies.
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile all modules and run unit tests
+        run: ./gradlew test --continue --stacktrace --no-configuration-cache
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: "**/build/reports/tests/**"
+          if-no-files-found: ignore
+          retention-days: 7
