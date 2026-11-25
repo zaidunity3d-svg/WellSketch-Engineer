@@ -34,9 +34,12 @@ class SurfaceModeTest {
         assertTrue(s.scene.surfaceBlocks.none { it.kind == SurfaceBlockKind.TREE_VALVE || it.kind == SurfaceBlockKind.INJECTOR })
         assertNotNull(s.scene.surfaceSite.rig)
         assertTrue(s.scene.elements.none { it.kind == ElementKind.TUBING_WALL || it.kind == ElementKind.COMPLETION_COMPONENT })
-        // BOP on the casing spool (tubing head spool not installed yet): 7.6 − (−0.6 + 7.0) m
-        assertEquals(1.2, s.surfaceStackup!!.clearanceUnderRotaryBeams!!.meters, 1e-9)
-        assertTrue(s.surfaceStackup!!.issues.any { it.code == "WELLHEAD_SECTIONS_NOT_INSTALLED" })
+        // reference stack-up: BOP through the DSA on the tubing head spool (top 0.98 m above GL);
+        // stack top 9.58 m with the 2.75 m synthetic bell nipple; beams 10.0 m (synthetic)
+        assertEquals(9.58, s.surfaceStackup!!.drillingStackTop!!.meters, 1e-9)
+        assertEquals(0.42, s.surfaceStackup!!.clearanceUnderRotaryBeams!!.meters, 1e-9)
+        assertEquals(11.10, s.surfaceStackup!!.drillFloor!!.meters, 1e-9)
+        assertTrue(s.surfaceStackup!!.installedWellhead!!.notInstalled.isEmpty())
         assertTrue(s.surfaceStackup!!.issues.none { it.code == "BOP_WELLHEAD_CONNECTION_MISMATCH" })
     }
 
@@ -51,12 +54,13 @@ class SurfaceModeTest {
 
     @Test
     fun nippleUpSectionEditIsValidatedAndChangesTheDrillingView() {
-        val ths = well.wellhead!!.sections.first()
-        val applied = assertIs<EditOutcome.Applied>(WellEdits.setBopNippleUpSection(well, ths.id))
-        assertEquals(ths.id, applied.well.drillingRigUp!!.nippledUpOnSectionId)
+        val spool = well.wellhead!!.sections[1]
+        val applied = assertIs<EditOutcome.Applied>(WellEdits.setBopNippleUpSection(well, spool.id))
+        assertEquals(spool.id, applied.well.drillingRigUp!!.nippledUpOnSectionId)
         val s = session.snapshot(applied.well, CompletionState.CURRENT, null, SurfaceMode.DRILLING, ctRigUp)
-        assertEquals(3, s.scene.surfaceBlocks.count { it.kind == SurfaceBlockKind.WELLHEAD })
-        // demo BOP bottom does not match the tubing head spool top: reported, not hidden
+        assertEquals(2, s.scene.surfaceBlocks.count { it.kind == SurfaceBlockKind.WELLHEAD })
+        assertTrue(s.surfaceStackup!!.issues.any { it.code == "WELLHEAD_SECTIONS_NOT_INSTALLED" })
+        // the DSA (11 in 5K) does not fit the casing spool flange: reported, not hidden
         assertTrue(s.surfaceStackup!!.issues.any { it.code == "BOP_WELLHEAD_CONNECTION_MISMATCH" })
 
         assertIs<EditOutcome.Rejected>(WellEdits.setBopNippleUpSection(well, "nope"))
@@ -83,7 +87,8 @@ class SurfaceModeTest {
         val s = session.snapshot(lowered, CompletionState.CURRENT, null)
         assertEquals(-3.0, s.scene.surfaceSite.cellar!!.floorAboveGl, 1e-9)
         assertEquals(-2.8, s.scene.surfaceBlocks.first().bottomAboveGl, 1e-9)
-        assertEquals(-0.7, s.surfaceStackup!!.wellheadTop!!.meters, 1e-9)
+        // base −2.8 m + 0.775 + 0.775 + 0.72 m
+        assertEquals(-0.53, s.surfaceStackup!!.wellheadTop!!.meters, 1e-9)
         val rejected = WellEdits.setCellarDepth(well, Length.meters(-1.0))
         assertIs<EditOutcome.Rejected>(rejected)
     }

@@ -321,7 +321,6 @@ class SurfaceStackupCalculator {
         val reason = when (installed.basis) {
             InstalledSectionsBasis.ENTERED -> "as entered"
             InstalledSectionsBasis.MATCHING_BOP_CONNECTION -> "its bottom connection matches that section"
-            InstalledSectionsBasis.TUBING_HEAD_NOT_YET_INSTALLED -> "assumed, no section matches its bottom connection"
             InstalledSectionsBasis.ALL_SECTIONS -> return
         }
         issues += ValidationIssue(

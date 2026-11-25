@@ -70,6 +70,7 @@ import com.wellsketch.engineer.core.ui.components.wellObjectDetails
 import com.wellsketch.engineer.core.ui.format.UnitFormatter
 import com.wellsketch.engineer.core.ui.schematic.SurfaceDetailCanvas
 import com.wellsketch.engineer.core.ui.schematic.WellSchematicCanvas
+import com.wellsketch.engineer.domain.ct.CtPathItem
 import com.wellsketch.engineer.domain.ct.CtAnalysis
 import com.wellsketch.engineer.domain.ct.CtCalculationCatalog
 import kotlinx.coroutines.launch
@@ -342,22 +343,34 @@ private fun LazyListScope.ctItems(
             }
         }
         item {
-            SectionCard("Restrictions above the nose", pad) {
-                val smallest = analysis.passability.smallestRestriction
-                if (smallest?.innerDiameter != null) {
-                    LabeledValue("Smallest restriction", smallest.label)
-                    LabeledValue("Diameter (${smallest.basis.label})", f.diameter(smallest.innerDiameter!!))
-                    LabeledValue("Depth", "${f.depth(smallest.topMd)} MD $canonical")
+            val path = analysis.pathSummary
+            fun where(item: CtPathItem) = item.depth?.let { "${f.depth(it)} MD $canonical" } ?: item.part.label
+            SectionCard("Smallest restriction (stripper to nose)", pad) {
+                val forBha = path.smallestForBha
+                if (forBha?.diameter != null) {
+                    LabeledValue("Smallest for the BHA", "${forBha.name} – ${where(forBha)}")
+                    LabeledValue("Diameter (${forBha.basisLabel})", f.diameter(forBha.diameter!!))
                 } else {
-                    Text("No restriction with known diameter above the nose.", style = MaterialTheme.typography.bodySmall)
+                    Text("No restriction with known diameter in the path.", style = MaterialTheme.typography.bodySmall)
+                }
+                val forCt = path.smallestForCt
+                if (forCt?.diameter != null && forCt != forBha) {
+                    LabeledValue("Smallest for the CT", "${forCt.name} – ${where(forCt)}: ${f.diameter(forCt.diameter!!)}")
                 }
                 op.bha.maxOuterDiameter?.let { LabeledValue("BHA max OD", f.diameter(it)) }
                 LabeledValue("CT OD", f.diameter(op.ctString.maxOuterDiameter))
-                analysis.passability.bhaDiametralClearance?.let {
-                    LabeledValue("Restriction ID − BHA OD", f.diameter(it))
+                path.bhaDiametralClearance?.let { LabeledValue("Restriction ID − BHA OD", f.diameter(it)) }
+                path.ctDiametralClearance?.let { LabeledValue("Restriction ID − CT OD", f.diameter(it)) }
+                Text("Path, top to bottom", style = MaterialTheme.typography.labelMedium)
+                path.items.forEach { item ->
+                    LabeledValue(
+                        "${item.name} (${where(item)})" + if (!item.bhaPasses) " – BHA below" else "",
+                        item.diameter?.let(f::diameter) ?: "Not entered",
+                    )
                 }
                 Text(
-                    "Geometric comparison only; no clearance criterion is applied until specified.",
+                    "Geometric comparison only; no clearance criterion is applied until specified. " +
+                        "The BHA is assumed deployed below the stripper (provisional).",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

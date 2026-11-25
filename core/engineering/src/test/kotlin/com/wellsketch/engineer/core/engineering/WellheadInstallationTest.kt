@@ -89,10 +89,11 @@ class WellheadInstallationTest {
     }
 
     @Test
-    fun noMatchingConnectionAssumesTheTubingHeadSpoolIsNotInstalledYet() {
+    fun noMatchingConnectionAssumesNothingAndKeepsEverySection() {
         val r = WellheadInstallation.installed(wellhead, OperatingState.Drilling(rigUp("OTHER")))
-        assertEquals(listOf("cs", "chh"), ids(r.sections))
-        assertEquals(InstalledSectionsBasis.TUBING_HEAD_NOT_YET_INSTALLED, r.basis)
+        assertEquals(listOf("ths", "cs", "chh"), ids(r.sections))
+        assertTrue(r.notInstalled.isEmpty())
+        assertEquals(InstalledSectionsBasis.ALL_SECTIONS, r.basis)
     }
 
     @Test
@@ -107,12 +108,13 @@ class WellheadInstallationTest {
     @Test
     fun unknownEnteredSectionFallsBackAndIsFlagged() {
         val r = WellheadInstallation.installed(wellhead, OperatingState.Drilling(rigUp("B", nippleUp = "gone")))
+        assertEquals(InstalledSectionsBasis.MATCHING_BOP_CONNECTION, r.basis)
         assertEquals(listOf("cs", "chh"), ids(r.sections))
         assertEquals("gone", r.unknownNippleUpSectionId)
     }
 
     @Test
-    fun sameFlangeOnTubingHeadAndCasingSpoolPrefersTheCasingSpoolWhileDrilling() {
+    fun sameFlangeOnTubingHeadAndCasingSpoolTakesTheUppermostSection() {
         val same = wellhead.copy(
             sections = listOf(
                 section("ths", WellheadSectionType.TUBING_HEAD_SPOOL, "F", "F", 0.6),
@@ -120,7 +122,8 @@ class WellheadInstallationTest {
                 section("chh", WellheadSectionType.CASING_HEAD_HOUSING, "A", "CSG", 0.7),
             ),
         )
-        assertEquals(listOf("cs", "chh"), ids(WellheadInstallation.installed(same, OperatingState.Drilling(rigUp("F"))).sections))
+        // BOP on the tubing head spool while drilling is normal practice for some operators
+        assertEquals(listOf("ths", "cs", "chh"), ids(WellheadInstallation.installed(same, OperatingState.Drilling(rigUp("F"))).sections))
     }
 
     @Test

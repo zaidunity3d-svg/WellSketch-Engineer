@@ -55,7 +55,7 @@ class WellSchematicBuilderTest {
         scene.formations.zipWithNext().forEach { (a, b) -> assertEquals(a.bottomTvdBelowGl, b.topTvdBelowGl, 1e-9) }
         // path starts at GL (y = 0) at MD = RKB height above GL
         assertEquals(0.0, scene.path.first().y, 1e-9)
-        assertEquals(9.0, scene.path.first().md, 1e-9)
+        assertEquals(11.1, scene.path.first().md, 1e-9)
     }
 
     @Test

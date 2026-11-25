@@ -51,13 +51,13 @@ class CtRestrictionAndPlacementTest {
 
     @Test
     fun depthOnOperationDatumIsConvertedToWellMd() {
-        // Demo datums: RKB 9 m above GL; CT zero 3 m above GL. MD(RKB) = MD(op) + 6 m.
+        // Demo datums: RKB 11.10 m above GL; CT zero (tree top) 3.98 m above GL. MD(RKB) = MD(op) + 7.12 m.
         val project = SyntheticDemoProjects.vertical()
         val op = project.ctOperations.single().copy(currentDepth = Length.meters(2000.0))
         val placement = analyzer.analyze(project.well, op, CtSurfaceViewMode.COMPACT).placement
-        assertEquals(2006.0, placement.noseMd.meters, 1e-9)
-        assertEquals(1997.0, placement.noseMdBelowGl.meters, 1e-9)
-        assertEquals(2006.0 - op.bha.totalLength.meters, placement.bhaTopMd.meters, 1e-9)
+        assertEquals(2007.12, placement.noseMd.meters, 1e-9)
+        assertEquals(1996.02, placement.noseMdBelowGl.meters, 1e-9)
+        assertEquals(2007.12 - op.bha.totalLength.meters, placement.bhaTopMd.meters, 1e-9)
         assertEquals(placement.bhaTopMd.meters, placement.bhaComponents.first().topMd.meters, 1e-12)
         assertEquals(placement.noseMd.meters, placement.bhaComponents.last().bottomMd.meters, 1e-9)
     }
@@ -68,7 +68,7 @@ class CtRestrictionAndPlacementTest {
         val ctx = WellGeometryContext(project.well)
         val op = project.ctOperations.single().copy(currentDepth = Length.meters(2000.0))
         val onRkb = CtOperationEdits.changeDepthReference(ctx, op, DepthReference.Rkb)
-        assertEquals(2006.0, onRkb.currentDepth.meters, 1e-9)
+        assertEquals(2007.12, onRkb.currentDepth.meters, 1e-9)
         val p1 = CtPlacementCalculator().place(ctx, op)
         val p2 = CtPlacementCalculator().place(ctx, onRkb)
         assertEquals(p1.noseMd.meters, p2.noseMd.meters, 1e-9)
