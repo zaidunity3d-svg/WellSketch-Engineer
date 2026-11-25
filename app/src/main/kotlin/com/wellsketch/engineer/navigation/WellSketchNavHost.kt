@@ -4,7 +4,6 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
@@ -17,6 +16,7 @@ import com.wellsketch.engineer.feature.ctcalc.CtCalculationsViewModel
 import com.wellsketch.engineer.feature.equipment.EquipmentLibraryScreen
 import com.wellsketch.engineer.feature.equipment.EquipmentLibraryViewModel
 import com.wellsketch.engineer.feature.wellcalc.WellCalculationsScreen
+import com.wellsketch.engineer.feature.wellcalc.WellCalculationsViewModel
 import com.wellsketch.engineer.feature.welldesign.WellDesignScreen
 import com.wellsketch.engineer.feature.welldesign.WellDesignViewModel
 import com.wellsketch.engineer.home.HomeScreen
@@ -53,12 +53,8 @@ fun WellSketchNavHost(container: AppContainer) {
         }
         composable<WellCalculationsRoute> { entry ->
             val route = entry.toRoute<WellCalculationsRoute>()
-            val summariesFlow = remember { container.wellProjects.observeProjectSummaries() }
-            val summaries by summariesFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-            WellCalculationsScreen(
-                projectName = summaries.firstOrNull { it.id == route.projectId }?.name,
-                onBack = { navController.popBackStack() },
-            )
+            val vm = viewModel { WellCalculationsViewModel(route.projectId, container.wellProjects) }
+            WellCalculationsScreen(vm, unitSystem, onBack = { navController.popBackStack() })
         }
         composable<CtCalculationsRoute> { entry ->
             val route = entry.toRoute<CtCalculationsRoute>()

@@ -63,6 +63,7 @@ import com.wellsketch.engineer.core.ui.components.IssueList
 import com.wellsketch.engineer.core.ui.components.LabeledValue
 import com.wellsketch.engineer.core.ui.components.ModuleTopBar
 import com.wellsketch.engineer.core.ui.components.NoticeCard
+import com.wellsketch.engineer.core.ui.components.NumberField
 import com.wellsketch.engineer.core.ui.components.SectionCard
 import com.wellsketch.engineer.core.ui.components.surfaceObjectDetails
 import com.wellsketch.engineer.core.ui.components.wellObjectDetails
@@ -399,8 +400,44 @@ private fun LazyListScope.ctItems(
         }
         item { SectionCard("Checks", pad) { IssueList(analysis.issues) } }
         item {
-            SectionCard("CT calculations (awaiting specification review)", pad) {
-                CtCalculationCatalog.planned.forEach { c -> LabeledValue(c.title, "Not implemented") }
+            val v = analysis.volumes
+            SectionCard("CT volumes and pumping (v${com.wellsketch.engineer.domain.ct.CtVolumeCalculator.VERSION}, pending validation)", pad) {
+                NumberField(
+                    "Pump rate", op.pumpRate?.let(f::flowRateValue) ?: 0.0, f.flowRateUnit, decimals = 2,
+                    onValueChange = { onEvent(CtEvent.SetPumpRate(f.flowRateFromValue(it))) }, isValid = { it >= 0.0 },
+                )
+                v.sections.forEachIndexed { i, s ->
+                    LabeledValue(
+                        "CT section ${i + 1} ID (OD − 2 × wall)",
+                        "${f.diameter(s.section.nominalInnerDiameter)} · ${f.capacity(s.internalCapacity)}",
+                    )
+                }
+                LabeledValue("CT internal volume (whole string)", f.volume(v.ctInternalVolumeTotal))
+                LabeledValue("CT in well (conduit top to BHA)", f.depth(v.ctLengthInWell))
+                LabeledValue("CT internal volume in well", f.volume(v.ctInternalVolumeInWell))
+                LabeledValue("CT steel displacement in well", f.volume(v.ctSteelDisplacementInWell))
+                LabeledValue("BHA displacement (max OD, upper bound)", f.volume(v.bhaDisplacementUpperBound))
+                LabeledValue("Annulus volume to nose", f.volume(v.annulus.total))
+                v.timeToNozzleMinutes?.let { LabeledValue("Time to pump CT volume (fluid at nozzle)", f.minutes(it)) }
+                v.bottomsUpMinutes?.let { LabeledValue("Bottoms-up time (annulus)", f.minutes(it)) }
+                v.slowestAnnularVelocity?.let { LabeledValue("Slowest annular velocity", "${f.velocity(it.metersPerMinute)} – ${it.segment.description}") }
+                v.fastestAnnularVelocity?.let { LabeledValue("Fastest annular velocity", "${f.velocity(it.metersPerMinute)} – ${it.segment.description}") }
+                v.annulus.segments.forEach { s ->
+                    Text(
+                        "${f.depth(s.topMd)} – ${f.depth(s.bottomMd)} · ${s.description} · ${f.capacity(s.capacity)} → ${f.volume(s.volume)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text(
+                    "Surface lines, tree/stack bore and the CT on surface between reel and datum are not included. " +
+                        "Velocities assume uniform flow in the annulus.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        item {
+            SectionCard("Not yet implemented (needs a reviewed model)", pad) {
+                CtCalculationCatalog.planned.filter { it.id == "ct-forces" }.forEach { c -> LabeledValue(c.title, "Not implemented") }
             }
         }
     }

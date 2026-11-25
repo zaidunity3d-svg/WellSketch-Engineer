@@ -29,6 +29,8 @@ data class CtAnalysis(
     val issues: List<ValidationIssue>,
     /** Surface elevations (wellhead, tree top, injector base) for this rig-up. */
     val surfaceStackup: SurfaceStackup,
+    /** CT volumes, pumping times and annular velocities at the planned pump rate. */
+    val volumes: CtVolumes,
 )
 
 /**
@@ -45,6 +47,7 @@ class CtOperationAnalyzer(
     private val placementCalculator: CtPlacementCalculator = CtPlacementCalculator(),
     private val stackValidator: CtSurfaceStackValidator = CtSurfaceStackValidator(),
     private val stackupCalculator: SurfaceStackupCalculator = SurfaceStackupCalculator(),
+    private val volumeCalculator: CtVolumeCalculator = CtVolumeCalculator(),
 ) {
 
     fun analyze(well: Well, operation: CtOperation, viewMode: CtSurfaceViewMode): CtAnalysis {
@@ -95,6 +98,7 @@ class CtOperationAnalyzer(
             emptyList()
         }
 
+        val volumes = volumeCalculator.calculate(flowPath, placement, operation)
         val ctElements = ctElements(baseScene.groundLevelMd, operation, placement)
         val scene = baseScene.copy(
             elements = baseScene.elements + ctElements,
@@ -108,8 +112,9 @@ class CtOperationAnalyzer(
             passability = passability,
             placement = placement,
             stackIssues = stackIssues,
-            issues = issues + passability.issues + placement.issues + stackIssues + stackup.issues,
+            issues = issues + passability.issues + placement.issues + stackIssues + stackup.issues + volumes.issues,
             surfaceStackup = stackup,
+            volumes = volumes,
         )
     }
 

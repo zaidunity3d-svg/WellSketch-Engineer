@@ -172,3 +172,50 @@ fun DepthField(
             .onFocusChanged { focused = it.isFocused },
     )
 }
+
+/**
+ * Numeric input for any quantity shown in [unit]. Behaves like [DepthField]: the model
+ * updates on every valid keystroke, invalid text is flagged, and the text is re-formatted
+ * from the model only when the field is not focused. [isValid] rejects out-of-range values
+ * (they are flagged and not applied).
+ */
+@Composable
+fun NumberField(
+    label: String,
+    value: Double,
+    unit: String,
+    decimals: Int,
+    onValueChange: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+    isValid: (Double) -> Boolean = { true },
+) {
+    val focusManager = LocalFocusManager.current
+    var text by remember(unit) { mutableStateOf(UnitFormatter.number(value, decimals)) }
+    var focused by remember { mutableStateOf(false) }
+    var invalid by remember { mutableStateOf(false) }
+    LaunchedEffect(value, unit, focused) {
+        if (!focused) {
+            text = UnitFormatter.number(value, decimals)
+            invalid = false
+        }
+    }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { newText ->
+            text = newText
+            val parsed = UnitFormatter.parseNumber(newText)?.takeIf(isValid)
+            invalid = parsed == null
+            if (parsed != null) onValueChange(parsed)
+        },
+        label = { Text(label) },
+        suffix = { Text(unit) },
+        isError = invalid,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused },
+    )
+}
+

@@ -5,10 +5,16 @@ import kotlin.test.assertTrue
 
 class WellCalculationCatalogTest {
     @Test
-    fun noCalculationIsOfferedBeforeItsSpecificationIsReviewed() {
+    fun implementedCalculationsAreVersionedReferencedAndNotYetMarkedValidated() {
         val specs = WellCalculationCatalog.specifications
         assertTrue(specs.isNotEmpty())
-        assertTrue(specs.all { it.status == CalculationStatus.AWAITING_SPECIFICATION_REVIEW && it.version == null })
         assertTrue(specs.map { it.id }.toSet().size == specs.size, "ids must be unique")
+        for (s in specs) {
+            // Only the owner can mark a calculation VALIDATED after reviewing it.
+            assertTrue(s.status != CalculationStatus.VALIDATED, s.id)
+            if (s.status == CalculationStatus.IMPLEMENTED_PENDING_VALIDATION) {
+                assertTrue(s.version != null && s.references.isNotEmpty(), "${s.id} needs a version and its formula basis")
+            }
+        }
     }
 }

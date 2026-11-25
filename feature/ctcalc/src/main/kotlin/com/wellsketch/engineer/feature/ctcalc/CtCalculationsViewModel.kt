@@ -8,6 +8,7 @@ import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
 import com.wellsketch.engineer.core.model.ct.CtOperation
 import com.wellsketch.engineer.core.model.datum.DepthReference
 import com.wellsketch.engineer.core.model.project.WellProject
+import com.wellsketch.engineer.core.model.units.FlowRate
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.schematic.CtSurfaceViewMode
 import com.wellsketch.engineer.core.schematic.SchematicElement
@@ -40,6 +41,7 @@ data class CtUiState(
 
 sealed interface CtEvent {
     data class SetDepth(val depth: Length) : CtEvent
+    data class SetPumpRate(val rate: FlowRate) : CtEvent
     data class SetViewMode(val mode: CtSurfaceViewMode) : CtEvent
     data class SetReference(val choice: DepthReferenceChoice) : CtEvent
     data class SetOperationDatumHeight(val heightAboveGl: Length) : CtEvent
@@ -110,6 +112,7 @@ class CtCalculationsViewModel(
     fun onEvent(event: CtEvent) {
         when (event) {
             is CtEvent.SetDepth -> updateOperation { _, op -> CtOperationEdits.setDepth(op, event.depth) }
+            is CtEvent.SetPumpRate -> updateOperation { _, op -> CtOperationEdits.setPumpRate(op, event.rate) }
             is CtEvent.SetViewMode -> viewMode.value = event.mode
             is CtEvent.SetReference -> updateOperation { ctx, op ->
                 val target = when (event.choice) {

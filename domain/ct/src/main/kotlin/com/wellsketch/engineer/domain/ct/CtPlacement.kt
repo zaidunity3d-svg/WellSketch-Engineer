@@ -7,6 +7,7 @@ import com.wellsketch.engineer.core.model.ct.CtBhaComponent
 import com.wellsketch.engineer.core.model.ct.CtOperation
 import com.wellsketch.engineer.core.model.datum.DepthReference
 import com.wellsketch.engineer.core.model.datum.MeasuredDepth
+import com.wellsketch.engineer.core.model.units.FlowRate
 import com.wellsketch.engineer.core.model.units.Length
 
 data class PlacedBhaComponent(val component: CtBhaComponent, val topMd: Length, val bottomMd: Length)
@@ -93,4 +94,8 @@ object CtOperationEdits {
     }
 
     fun setDepth(operation: CtOperation, depth: Length): CtOperation = operation.copy(currentDepth = depth)
+
+    /** Sets the planned pump rate; a negative rate is not applied. */
+    fun setPumpRate(operation: CtOperation, rate: FlowRate): CtOperation =
+        if (rate < FlowRate.ZERO) operation else operation.copy(pumpRate = rate)
 }
