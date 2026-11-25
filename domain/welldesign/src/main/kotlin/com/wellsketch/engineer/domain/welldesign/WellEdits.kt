@@ -122,4 +122,16 @@ object WellEdits {
             well.copy(wellhead = wellhead.copy(sections = wellhead.sections.map { if (it.id == sectionId) it.copy(height = height) else it })),
         )
     }
+
+    /**
+     * Sets the wellhead section the drilling BOP is nippled up on (sections above it are not
+     * installed in the drilling state); null = decided from the BOP bottom connection.
+     */
+    fun setBopNippleUpSection(well: Well, sectionId: String?): EditOutcome {
+        val rigUp = well.drillingRigUp ?: return EditOutcome.Rejected("No drilling rig-up defined")
+        if (sectionId != null && well.wellhead?.sections?.none { it.id == sectionId } != false) {
+            return EditOutcome.Rejected("Unknown wellhead section")
+        }
+        return EditOutcome.Applied(well.copy(drillingRigUp = rigUp.copy(nippledUpOnSectionId = sectionId)))
+    }
 }

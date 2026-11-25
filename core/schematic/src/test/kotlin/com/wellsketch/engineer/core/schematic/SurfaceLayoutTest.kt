@@ -56,13 +56,31 @@ class SurfaceLayoutTest {
         assertTrue(layout.blocks.all { it.centerOffset == 0.0 }, "all equipment on the well centerline")
         assertContiguousOnAxis(layout.blocks)
         val firstBop = layout.blocks.first { it.kind in drillingKinds }
-        assertEquals(0.0, firstBop.bottomAboveGl, 1e-9) // nippled up on the wellhead top flange
+        // Demo BOP bottom matches the casing spool top: the tubing head spool is not installed
+        // while drilling, so the BOP is nippled up 0.6 m below GL, inside the cellar.
+        assertEquals(-0.6, firstBop.bottomAboveGl, 1e-9)
+        val wellheadIds = layout.blocks.filter { it.kind == SurfaceBlockKind.WELLHEAD }.map { it.sourceId }
+        assertEquals(well.wellhead!!.sections.drop(1).map { it.id }.reversed(), wellheadIds)
         val rig = assertNotNull(layout.site.rig)
         assertEquals(8.5, rig.floorTopAboveGl, 1e-9)
         assertEquals(7.6, rig.beamsUndersideAboveGl, 1e-9)
         assertTrue(layout.blocks.last().topAboveGl <= rig.beamsUndersideAboveGl)
         assertTrue(layout.site.structureBlocks.any { it.kind == SurfaceBlockKind.SUBSTRUCTURE })
         assertTrue(layout.site.structureBlocks.any { it.kind == SurfaceBlockKind.RIG_FLOOR })
+    }
+
+    @Test
+    fun enteredNippleUpSectionDecidesTheInstalledWellheadInTheDrawing() {
+        val rigUp = well.drillingRigUp!!
+        val ths = well.wellhead!!.sections.first()
+        val onThs = SurfaceLayouts.layout(OperatingState.Drilling(rigUp.copy(nippledUpOnSectionId = ths.id)), inputs = inputs)
+        assertEquals(3, onThs.blocks.count { it.kind == SurfaceBlockKind.WELLHEAD })
+        assertEquals(0.0, onThs.blocks.first { it.kind in drillingKinds }.bottomAboveGl, 1e-9)
+        val chh = well.wellhead!!.sections.last()
+        val onChh = SurfaceLayouts.layout(OperatingState.Drilling(rigUp.copy(nippledUpOnSectionId = chh.id)), inputs = inputs)
+        assertEquals(listOf(chh.id), onChh.blocks.filter { it.kind == SurfaceBlockKind.WELLHEAD }.map { it.sourceId })
+        assertEquals(-2.1 + 0.75, onChh.blocks.first { it.kind in drillingKinds }.bottomAboveGl, 1e-9)
+        assertContiguousOnAxis(onChh.blocks)
     }
 
     @Test

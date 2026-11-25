@@ -521,7 +521,7 @@ object SyntheticDemoProjects {
                     rams = listOf(RamType.PIPE),
                 ),
                 bopComponent(
-                    "$id-bop-ds", DrillingBopComponentType.DRILLING_SPOOL, "Drilling spool (demo)", 5000.0, "DEMO-BOP-D", "DEMO-WELLHEAD", 0.6,
+                    "$id-bop-ds", DrillingBopComponentType.DRILLING_SPOOL, "Drilling spool (demo)", 5000.0, "DEMO-BOP-D", "DEMO-WH-2", 0.6,
                     outlets = listOf(
                         SideOutlet(
                             "$id-bop-kill", OutletSide.LEFT,

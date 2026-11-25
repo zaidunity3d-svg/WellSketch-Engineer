@@ -77,4 +77,10 @@ data class DrillingRig(
 data class DrillingRigUp(
     val rig: DrillingRig,
     val bopStack: DrillingBopStack,
+    /**
+     * Id of the wellhead section the drilling BOP is nippled up on in this state; sections
+     * above it are not installed yet (e.g. no tubing head spool while drilling). Null =
+     * decided from the BOP bottom connection (see the stack-up calculator).
+     */
+    val nippledUpOnSectionId: String? = null,
 )

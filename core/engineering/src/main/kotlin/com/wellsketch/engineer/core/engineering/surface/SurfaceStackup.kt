@@ -54,6 +54,8 @@ data class SurfaceStackup(
     /** Distance from the RKB datum down to the wellhead top (landing reference). */
     val rkbToWellheadTop: Length?,
     val issues: List<ValidationIssue>,
+    /** Wellhead sections on the well in this state (null when no wellhead is defined). */
+    val installedWellhead: InstalledWellhead? = null,
 )
 
 /**
@@ -80,7 +82,11 @@ class SurfaceStackupCalculator {
         }
 
         // --- Wellhead -------------------------------------------------------------------
-        val wellhead = well.wellhead?.takeIf { it.sections.isNotEmpty() }
+        val fullWellhead = well.wellhead?.takeIf { it.sections.isNotEmpty() }
+        val installed = fullWellhead?.let { WellheadInstallation.installed(it, state) }
+        // Only the sections on the well in this state count (e.g. no tubing head spool while drilling).
+        val wellhead = fullWellhead?.copy(sections = installed!!.sections)
+        if (installed != null) installationIssues(installed, fullWellhead.id, issues)
         var base: Length? = null
         var top: Length? = null
         var basis = WellheadPositionBasis.UNKNOWN
@@ -275,6 +281,7 @@ class SurfaceStackupCalculator {
             clearanceUnderRotaryBeams = clearance,
             rkbToWellheadTop = top?.let { rkbAboveGl - it },
             issues = issues,
+            installedWellhead = installed,
         )
     }
 
@@ -299,6 +306,30 @@ class SurfaceStackupCalculator {
     /** Base + sum of heights, or null when any height is missing. */
     private fun stackTop(base: Length, heights: List<Length?>): Length? =
         if (heights.any { it == null }) null else base + Length(heights.sumOf { it!!.meters })
+
+    private fun installationIssues(installed: InstalledWellhead, wellheadId: String, issues: MutableList<ValidationIssue>) {
+        installed.unknownNippleUpSectionId?.let { id ->
+            issues += ValidationIssue(
+                Severity.ERROR, "BOP_NIPPLE_UP_SECTION_NOT_FOUND",
+                "The wellhead section '$id' entered for the drilling BOP does not exist; the BOP is placed by its bottom connection instead.",
+                listOf(wellheadId),
+            )
+        }
+        if (installed.notInstalled.isEmpty()) return
+        val top = installed.top ?: return
+        val names = installed.notInstalled.joinToString { "'${it.name}'" }
+        val reason = when (installed.basis) {
+            InstalledSectionsBasis.ENTERED -> "as entered"
+            InstalledSectionsBasis.MATCHING_BOP_CONNECTION -> "its bottom connection matches that section"
+            InstalledSectionsBasis.TUBING_HEAD_NOT_YET_INSTALLED -> "assumed, no section matches its bottom connection"
+            InstalledSectionsBasis.ALL_SECTIONS -> return
+        }
+        issues += ValidationIssue(
+            Severity.INFO, "WELLHEAD_SECTIONS_NOT_INSTALLED",
+            "Drilling state: BOP nippled up on '${top.name}' ($reason). Not installed yet: $names.",
+            installed.notInstalled.map { it.id },
+        )
+    }
 
     private fun connects(a: EndConnection, b: EndConnection) = a.designation.trim() == b.designation.trim()
 
