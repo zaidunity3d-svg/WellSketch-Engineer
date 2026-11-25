@@ -109,7 +109,23 @@ Dependency direction: `feature → domain → core:schematic → core:engineerin
 - Equipment Library: synthetic placeholder entries only; no real catalog data.
 - Component breakdown views: not implemented; will use owner-approved reference images only.
 - Detailed final well illustration: not implemented (separate from the live sketch).
-- Drilling rig/BOP surface drawing: type exists, drawing not implemented.
+- Mast/derrick above the drill floor and the drill string are not drawn in the drilling view.
+- The CT pressure-control stack is drawn from the configured component list; an in-app stack editor is not implemented yet.
+
+## Surface equipment: cellar, wellhead, drilling BOP, tree and CT stack
+
+The sketch shows one surface configuration per operating state, always on the well centerline:
+
+| Mode | Shown | Never shown |
+|---|---|---|
+| **Drilling** | Rig floor and substructure, drilling BOP stack (bell nipple, annular, ram preventers, drilling spool with choke/kill outlets) on the wellhead in the cellar; casing and open hole only | Christmas Tree, completion, CT equipment |
+| **Completion – tree** | Christmas Tree on the wellhead: tubing head adapter, lower/upper master valves, flow cross with wing valves and production choke, swab valve, tree cap | Rig, drilling BOP |
+| **CT intervention** | Tree (cap removed) + configured CT pressure-control stack (crossover, flow cross, CT BOP, riser, stripper) + injector; full view adds gooseneck, reel, cabin and power pack | Rig, drilling BOP (drilling and CT BOP types are separate model types) |
+
+- **Wellhead in the cellar.** `Well.wellhead` holds the spool-type wellhead sections (casing head housing, casing spools, tubing head spool) with heights, connections and side outlets; `Well.cellar` holds the cellar depth and width. The wellhead base elevation is entered relative to GL (negative = in the cellar); if missing it is assumed on the cellar floor and reported.
+- **Surface stack-up calculations** (`SurfaceStackupCalculator`, pure and unit-tested): wellhead base/top elevation, RKB-to-wellhead-top distance, tree top with/without cap, CT stack top (injector base), drilling stack top, drill-floor elevation and clearance under the rotary beams. Values are computed only from entered heights; drawing placeholders are never used. Checks: connection continuity wellhead → tree/BOP, wellhead below cellar floor, BOP stack above the floor or exceeding substructure clearance, wing outlets branching from a flow tee/cross.
+- **Drawing.** `SurfaceArtwork` turns the layout into renderer-agnostic vector primitives (flanges with studs and nuts, side outlets with valves, gauges and plugs, front-facing handwheels, hydraulic actuators, ram operators, rig substructure, cellar). Widths and fittings are drawing sizes only. Below GL, a near-surface strip uses the surface scale (piecewise vertical mapping applied to path, column and surface alike, so GL stays the column top), separated from the well scale by a break line. A **Surface detail** view shows the same artwork full-size with callouts.
+- Reference images supplied by the owner were used for visual guidance only, not for dimensions, ratings or manufacturer data. All demo surface equipment is synthetic.
 
 **Needs engineering validation by the owner**
 - Minimum curvature implementation and the straight projection below the last survey station.
@@ -117,11 +133,12 @@ Dependency direction: `feature → domain → core:schematic → core:engineerin
 - CT depth convention (counter zero with BHA nose at the datum).
 - Use of nominal bit size as open-hole diameter; perforation symbols are not to scale.
 - Lithology colours/patterns of the stratigraphic column.
+- Surface rules: wellhead base assumed on the cellar floor when not entered; drill floor drawn at RKB when the RKB-to-floor distance is missing; CT ram cavity count drawn from the BOP height.
 
 **Remaining work (next milestones)**
 - Specifications and tests for capacities, displacements, hydrostatics, cementing and CT pumping/forces.
 - Validated tubular/equipment datasets with catalog provenance and import tooling.
 - Full editors (add/remove strings, sections, components, surveys, survey import), tapered strings, caliper data, offshore datums (water depth, mudline).
-- Detailed component views, final well illustration, rig/BOP drilling view.
+- Detailed component views, final well illustration.
 - Add `distributionSha256Sum` to the wrapper properties.
 - UI tests (Compose) and screenshot tests.

@@ -4,7 +4,12 @@ import com.wellsketch.engineer.core.engineering.trajectory.TrajectorySource
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue
 import com.wellsketch.engineer.core.model.ct.CtBhaComponentType
 import com.wellsketch.engineer.core.model.geology.Lithology
+import com.wellsketch.engineer.core.model.surface.DrillingBopComponentType
+import com.wellsketch.engineer.core.model.surface.OutletFitting
+import com.wellsketch.engineer.core.model.surface.RamType
 import com.wellsketch.engineer.core.model.surface.StackComponentType
+import com.wellsketch.engineer.core.model.surface.ValveOperator
+import com.wellsketch.engineer.core.model.surface.WellheadSectionType
 import com.wellsketch.engineer.core.model.well.CasingRole
 import com.wellsketch.engineer.core.model.well.CementStatus
 import com.wellsketch.engineer.core.model.well.CompletionComponentType
@@ -106,7 +111,48 @@ enum class SurfaceBlockKind {
     WELLHEAD, TREE_CAP, TREE_VALVE, TREE_TEE, TREE_ADAPTER,
     STRIPPER, BOP, RISER, FLOW_CROSS, CROSSOVER,
     INJECTOR, GOOSENECK, REEL, CONTROL_CABIN, POWER_PACK, OTHER,
+
+    // Christmas Tree wing branch (off the well axis)
+    TREE_WING_VALVE, TREE_CHOKE,
+
+    // Drilling BOP stack (separate from the CT stack kinds above)
+    DRILLING_BELL_NIPPLE, DRILLING_ANNULAR, DRILLING_RAM, DRILLING_SPOOL,
+
+    // Site structures
+    CELLAR, SUBSTRUCTURE, RIG_FLOOR,
 }
+
+/** Orientation of a surface block's main axis. */
+enum class BlockOrientation { VERTICAL, HORIZONTAL }
+
+/** A side outlet drawn on a wellhead section or drilling BOP body. */
+data class OutletDrawing(
+    val id: String,
+    /** -1 = left of the axis, +1 = right. */
+    val side: Int,
+    val fittings: List<OutletFitting>,
+    val label: String,
+)
+
+/**
+ * Visual hints for the surface artwork. Purely presentational: nothing here is an
+ * equipment dimension and nothing here may be used in calculations.
+ */
+data class BlockDrawing(
+    val orientation: BlockOrientation = BlockOrientation.VERTICAL,
+    /** For horizontal (off-axis) blocks: -1 = left of the axis, +1 = right. */
+    val side: Int = 0,
+    val wellheadSection: WellheadSectionType? = null,
+    val stackType: StackComponentType? = null,
+    val bopType: DrillingBopComponentType? = null,
+    val operator: ValveOperator? = null,
+    val rams: List<RamType> = emptyList(),
+    val outlets: List<OutletDrawing> = emptyList(),
+    /** Sides (-1/+1) where a flow tee/cross has flanged branch outlets. */
+    val branchSides: List<Int> = emptyList(),
+    /** True for the last component of a wing branch (gets an open outlet flange). */
+    val isBranchEnd: Boolean = false,
+)
 
 /**
  * Surface equipment block in metres: [centerOffset] is the horizontal offset of the block
@@ -123,8 +169,70 @@ data class SurfaceBlock(
     val width: Double,
     /** True when height/width are drawing placeholders because no data-sheet size exists. */
     val sizeIsSchematic: Boolean,
+    val drawing: BlockDrawing = BlockDrawing(),
 ) {
     val topAboveGl: Double get() = bottomAboveGl + height
+}
+
+/** Concrete cellar pit in metres relative to GL (drawing geometry). */
+data class CellarDrawing(
+    val sourceId: String,
+    val label: String,
+    /** Cellar floor elevation (negative = below GL). */
+    val floorAboveGl: Double,
+    val insideHalfWidth: Double,
+    val wallThickness: Double,
+    val slabThickness: Double,
+    val sizeIsSchematic: Boolean,
+)
+
+/** Drill floor and substructure for the drilling state, metres relative to GL. */
+data class RigDrawing(
+    val sourceId: String,
+    val label: String,
+    /** Drill-floor walking surface elevation. */
+    val floorTopAboveGl: Double,
+    /** RKB datum elevation (top of the rotary/kelly bushing). */
+    val rkbAboveGl: Double,
+    /** Underside of the rotary support beams. */
+    val beamsUndersideAboveGl: Double,
+    val halfWidth: Double,
+    /** True when the floor is drawn at RKB because the RKB-to-floor distance is missing. */
+    val floorPositionAssumed: Boolean,
+    val sizeIsSchematic: Boolean,
+)
+
+/** Casing string reaching the surface, drawn as a stub below the wellhead / through the cellar. */
+data class CasingStubDrawing(
+    val sourceId: String,
+    val label: String,
+    val outerRadius: Double,
+    val topAboveGl: Double,
+    val bottomAboveGl: Double,
+)
+
+/**
+ * Surface context of the scene: the cellar, rig structure, casing stubs and off-axis
+ * equipment (wing valves, chokes). Kept separate from [SchematicScene.surfaceBlocks],
+ * which remain the contiguous pressure stack on the well axis.
+ */
+data class SurfaceSite(
+    val cellar: CellarDrawing? = null,
+    val rig: RigDrawing? = null,
+    val casingStubs: List<CasingStubDrawing> = emptyList(),
+    /** Off-axis pressure equipment, e.g. tree wing valves and chokes. */
+    val sideBlocks: List<SurfaceBlock> = emptyList(),
+    /** Blocks used for tapping site structures (cellar, substructure, rig floor). */
+    val structureBlocks: List<SurfaceBlock> = emptyList(),
+    /** True when coiled tubing is rigged up (CT is drawn through the injector). */
+    val showsCoiledTubing: Boolean = false,
+) {
+    val isEmpty: Boolean
+        get() = cellar == null && rig == null && casingStubs.isEmpty() && sideBlocks.isEmpty() && structureBlocks.isEmpty()
+
+    companion object {
+        val NONE = SurfaceSite()
+    }
 }
 
 data class SchematicScene(
@@ -139,10 +247,18 @@ data class SchematicScene(
     val groundLevelMd: Double,
     val totalDepthMd: Double,
     val issues: List<ValidationIssue>,
+    val surfaceSite: SurfaceSite = SurfaceSite.NONE,
 ) {
     init {
         require(path.size >= 2) { "A scene path needs at least two vertices." }
     }
+
+    /** True when there is any surface equipment or site structure to draw. */
+    val hasSurface: Boolean get() = surfaceBlocks.isNotEmpty() || !surfaceSite.isEmpty
+
+    /** Every tappable surface block: axis stack, off-axis equipment, then site structures. */
+    val allSurfaceBlocks: List<SurfaceBlock>
+        get() = surfaceBlocks + surfaceSite.sideBlocks + surfaceSite.structureBlocks
 
     /** Largest radius that is real geometry (used for radial scaling). */
     val maxRadius: Double =

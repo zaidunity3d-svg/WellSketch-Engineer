@@ -12,8 +12,11 @@ import com.wellsketch.engineer.core.model.ct.CtRigUp
 sealed interface OperatingState {
     val label: String
 
-    /** Drilling with a rig: RKB exists physically, drilling BOP on the wellhead, no tree. */
-    data class Drilling(val rigName: String, val bopDescription: String) : OperatingState {
+    /**
+     * Drilling with a rig: RKB exists physically, the drilling BOP stack is nippled up on the
+     * wellhead under the rig floor, and no Christmas Tree is installed.
+     */
+    data class Drilling(val rigUp: DrillingRigUp) : OperatingState {
         override val label = "Drilling (rig + drilling BOP)"
     }
 

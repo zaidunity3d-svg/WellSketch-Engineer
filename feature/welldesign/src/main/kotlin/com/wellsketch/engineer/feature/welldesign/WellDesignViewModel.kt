@@ -9,6 +9,7 @@ import com.wellsketch.engineer.core.model.well.CompletionState
 import com.wellsketch.engineer.core.model.well.Well
 import com.wellsketch.engineer.core.schematic.SurfaceBlock
 import com.wellsketch.engineer.domain.welldesign.EditOutcome
+import com.wellsketch.engineer.domain.welldesign.SurfaceMode
 import com.wellsketch.engineer.domain.welldesign.WellDesignSession
 import com.wellsketch.engineer.domain.welldesign.WellDesignSnapshot
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +32,7 @@ data class WellDesignUiState(
 
 sealed interface WellDesignEvent {
     data class SelectCompletionState(val state: CompletionState) : WellDesignEvent
+    data class SelectSurfaceMode(val mode: SurfaceMode) : WellDesignEvent
     data class SelectElement(val elementId: String?) : WellDesignEvent
     data class SelectSurfaceBlock(val block: SurfaceBlock) : WellDesignEvent
     data object ClearSelection : WellDesignEvent
@@ -39,6 +41,12 @@ sealed interface WellDesignEvent {
     /** A pure edit of the well (see WellEdits); applied immediately and autosaved. */
     data class Edit(val transform: (Well) -> EditOutcome) : WellDesignEvent
 }
+
+/** What the user asked the sketch to show: completion state and surface configuration. */
+private data class SketchRequest(
+    val completionState: CompletionState? = null,
+    val surfaceMode: SurfaceMode? = null,
+)
 
 /**
  * Holds the edited project and derives the live schematic on every change. The scene is
@@ -53,21 +61,24 @@ class WellDesignViewModel(
 
     private val session = WellDesignSession()
     private val project = MutableStateFlow<WellProject?>(null)
-    private val requestedState = MutableStateFlow<CompletionState?>(null)
+    private val requested = MutableStateFlow(SketchRequest())
     private val selectedElementId = MutableStateFlow<String?>(null)
     private val selectedBlock = MutableStateFlow<SurfaceBlock?>(null)
     private val message = MutableStateFlow<String?>(null)
     private val loadError = MutableStateFlow<String?>(null)
 
     val uiState: StateFlow<WellDesignUiState> =
-        combine(project, requestedState, selectedElementId, selectedBlock, message) { p, state, elementId, block, msg ->
+        combine(project, requested, selectedElementId, selectedBlock, message) { p, request, elementId, block, msg ->
             if (p == null) {
                 WellDesignUiState(loading = true)
             } else {
                 WellDesignUiState(
                     loading = false,
                     project = p,
-                    snapshot = session.snapshot(p.well, state, elementId),
+                    snapshot = session.snapshot(
+                        p.well, request.completionState, elementId, request.surfaceMode,
+                        ctRigUp = p.ctOperations.firstOrNull()?.rigUp,
+                    ),
                     selectedSurfaceBlock = block,
                     message = msg,
                 )
@@ -87,7 +98,11 @@ class WellDesignViewModel(
 
     fun onEvent(event: WellDesignEvent) {
         when (event) {
-            is WellDesignEvent.SelectCompletionState -> requestedState.value = event.state
+            is WellDesignEvent.SelectCompletionState -> requested.value = requested.value.copy(completionState = event.state)
+            is WellDesignEvent.SelectSurfaceMode -> {
+                requested.value = requested.value.copy(surfaceMode = event.mode)
+                selectedBlock.value = null
+            }
             is WellDesignEvent.SelectElement -> {
                 selectedElementId.value = event.elementId
                 selectedBlock.value = null

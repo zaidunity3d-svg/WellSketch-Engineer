@@ -1,6 +1,8 @@
 package com.wellsketch.engineer.domain.ct
 
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
+import com.wellsketch.engineer.core.engineering.surface.SurfaceStackup
+import com.wellsketch.engineer.core.engineering.surface.SurfaceStackupCalculator
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue.Severity
 import com.wellsketch.engineer.core.model.ct.CtOperation
@@ -12,7 +14,6 @@ import com.wellsketch.engineer.core.schematic.ElementDetail
 import com.wellsketch.engineer.core.schematic.ElementKind
 import com.wellsketch.engineer.core.schematic.SchematicElement
 import com.wellsketch.engineer.core.schematic.SchematicScene
-import com.wellsketch.engineer.core.schematic.SurfaceLayouts
 import com.wellsketch.engineer.core.schematic.WellSchematicBuilder
 import kotlin.math.max
 
@@ -26,6 +27,8 @@ data class CtAnalysis(
     val placement: CtPlacement,
     val stackIssues: List<ValidationIssue>,
     val issues: List<ValidationIssue>,
+    /** Surface elevations (wellhead, tree top, injector base) for this rig-up. */
+    val surfaceStackup: SurfaceStackup,
 )
 
 /**
@@ -41,6 +44,7 @@ class CtOperationAnalyzer(
     private val restrictionAnalyzer: CtRestrictionAnalyzer = CtRestrictionAnalyzer(),
     private val placementCalculator: CtPlacementCalculator = CtPlacementCalculator(),
     private val stackValidator: CtSurfaceStackValidator = CtSurfaceStackValidator(),
+    private val stackupCalculator: SurfaceStackupCalculator = SurfaceStackupCalculator(),
 ) {
 
     fun analyze(well: Well, operation: CtOperation, viewMode: CtSurfaceViewMode): CtAnalysis {
@@ -69,7 +73,8 @@ class CtOperationAnalyzer(
             OperatingState.SurfaceNotDefined
         }
 
-        val baseScene = schematicBuilder.build(well, completionState, operatingState)
+        val baseScene = schematicBuilder.build(well, completionState, operatingState, viewMode)
+        val stackup = stackupCalculator.calculate(well, operatingState)
         val flowPath = flowPathResolver.resolve(ctx, completion)
         val restrictions = restrictionAnalyzer.restrictions(ctx, flowPath, completion)
         val placement = placementCalculator.place(ctx, operation)
@@ -93,7 +98,6 @@ class CtOperationAnalyzer(
         val ctElements = ctElements(baseScene.groundLevelMd, operation, placement)
         val scene = baseScene.copy(
             elements = baseScene.elements + ctElements,
-            surfaceBlocks = SurfaceLayouts.forOperatingState(operatingState, viewMode),
             totalDepthMd = max(baseScene.totalDepthMd, placement.noseMd.meters),
         )
         return CtAnalysis(
@@ -104,7 +108,8 @@ class CtOperationAnalyzer(
             passability = passability,
             placement = placement,
             stackIssues = stackIssues,
-            issues = issues + passability.issues + placement.issues + stackIssues,
+            issues = issues + passability.issues + placement.issues + stackIssues + stackup.issues,
+            surfaceStackup = stackup,
         )
     }
 

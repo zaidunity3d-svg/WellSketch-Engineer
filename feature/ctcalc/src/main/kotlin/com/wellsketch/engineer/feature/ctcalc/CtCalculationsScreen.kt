@@ -38,6 +38,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -61,8 +64,10 @@ import com.wellsketch.engineer.core.ui.components.LabeledValue
 import com.wellsketch.engineer.core.ui.components.ModuleTopBar
 import com.wellsketch.engineer.core.ui.components.NoticeCard
 import com.wellsketch.engineer.core.ui.components.SectionCard
+import com.wellsketch.engineer.core.ui.components.surfaceObjectDetails
 import com.wellsketch.engineer.core.ui.components.wellObjectDetails
 import com.wellsketch.engineer.core.ui.format.UnitFormatter
+import com.wellsketch.engineer.core.ui.schematic.SurfaceDetailCanvas
 import com.wellsketch.engineer.core.ui.schematic.WellSchematicCanvas
 import com.wellsketch.engineer.domain.ct.CtAnalysis
 import com.wellsketch.engineer.domain.ct.CtCalculationCatalog
@@ -97,16 +102,45 @@ fun CtCalculationsScreen(viewModel: CtCalculationsViewModel, unitSystem: UnitSys
 private fun CtContent(state: CtUiState, op: CtOperation, analysis: CtAnalysis, f: UnitFormatter, onEvent: (CtEvent) -> Unit) {
     val project = state.project ?: return
     val ctx = remember(project.well) { WellGeometryContext(project.well) }
+    var surfaceDetail by rememberSaveable { mutableStateOf(false) }
     val schematic = @Composable { modifier: Modifier ->
-        WellSchematicCanvas(
-            scene = analysis.scene,
-            formatter = f,
-            selectedId = state.selectedElement?.id ?: state.selectedBlock?.sourceId,
-            onElementSelected = { onEvent(CtEvent.SelectElement(it)) },
-            onSurfaceBlockSelected = { onEvent(CtEvent.SelectBlock(it)) },
-            surfaceBandHeight = if (state.viewMode == CtSurfaceViewMode.FULL) 170.dp else 140.dp,
-            modifier = modifier,
-        )
+        Column(modifier) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                CtSurfaceViewMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = mode == state.viewMode,
+                        onClick = { onEvent(CtEvent.SetViewMode(mode)) },
+                        label = { Text(if (mode == CtSurfaceViewMode.FULL) "Full spread" else "Compact", style = MaterialTheme.typography.labelMedium) },
+                    )
+                }
+                FilterChip(
+                    selected = surfaceDetail,
+                    onClick = { surfaceDetail = !surfaceDetail },
+                    label = { Text("Surface detail", style = MaterialTheme.typography.labelMedium) },
+                )
+            }
+            if (surfaceDetail && analysis.scene.hasSurface) {
+                SurfaceDetailCanvas(
+                    scene = analysis.scene,
+                    selectedId = state.selectedBlock?.sourceId,
+                    onSurfaceBlockSelected = { onEvent(CtEvent.SelectBlock(it)) },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            } else {
+                WellSchematicCanvas(
+                    scene = analysis.scene,
+                    formatter = f,
+                    selectedId = state.selectedElement?.id ?: state.selectedBlock?.sourceId,
+                    onElementSelected = { onEvent(CtEvent.SelectElement(it)) },
+                    onSurfaceBlockSelected = { onEvent(CtEvent.SelectBlock(it)) },
+                    surfaceBandHeight = if (state.viewMode == CtSurfaceViewMode.FULL) 170.dp else 140.dp,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            }
+        }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth >= 720.dp) {
@@ -206,23 +240,11 @@ private fun LazyListScope.ctItems(
         }
         state.selectedBlock?.let { block ->
             item {
-                val component = (op.rigUp.pressureControlStack.components + well.christmasTree?.components.orEmpty())
-                    .firstOrNull { it.id == block.sourceId }
+                val details = surfaceObjectDetails(block, well, op.rigUp.pressureControlStack, analysis.surfaceStackup, f)
                 DetailCard(
-                    title = component?.name ?: block.label,
-                    rows = if (component != null) {
-                        listOf(
-                            "Type" to component.type.label,
-                            "Bore" to f.diameter(component.bore),
-                            "Rated working pressure" to f.pressure(component.ratedWorkingPressure),
-                            "Top connection" to component.topConnection.designation,
-                            "Bottom connection" to component.bottomConnection.designation,
-                            "Height" to (component.height?.let(f::depth) ?: "Not provided"),
-                        )
-                    } else {
-                        listOf("Size" to "Drawing placeholder – no data-sheet dimensions")
-                    },
-                    provenance = component?.provenance,
+                    title = details.title,
+                    rows = details.rows,
+                    provenance = details.provenance,
                     onClose = { onEvent(CtEvent.ClearSelection) },
                     footnote = BREAKDOWN_PENDING_NOTE,
                     modifier = pad,
@@ -348,6 +370,23 @@ private fun LazyListScope.ctItems(
                     Text("On ${tree.name}", style = MaterialTheme.typography.labelMedium)
                 }
                 op.maxExpectedWellheadPressure?.let { LabeledValue("Max expected WHP (entered)", f.pressure(it)) }
+            }
+        }
+        item {
+            val s = analysis.surfaceStackup
+            fun elevation(v: Length?) = when {
+                v == null -> "Not calculated"
+                v < Length.ZERO -> "${f.depth(-v)} below GL"
+                else -> "${f.depth(v)} above GL"
+            }
+            SectionCard("Surface stack-up (from entered heights)", pad) {
+                LabeledValue("Cellar floor", elevation(s.cellarFloor))
+                LabeledValue("Wellhead top flange", elevation(s.wellheadTop))
+                LabeledValue("Tree top (cap removed)", elevation(s.treeTopWithoutCap))
+                LabeledValue("Injector base (CT stack top)", elevation(s.ctStackTop))
+                (op.depthReference as? DepthReference.Operation)?.let { datum ->
+                    LabeledValue("'${datum.name}' height", elevation(datum.heightAboveGroundLevel))
+                }
             }
         }
         item {

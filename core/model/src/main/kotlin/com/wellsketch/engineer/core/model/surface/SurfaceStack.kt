@@ -16,6 +16,7 @@ enum class StackComponentType(val label: String, val group: StackGroup) {
     UPPER_MASTER_VALVE("Upper master valve", StackGroup.CHRISTMAS_TREE),
     LOWER_MASTER_VALVE("Lower master valve", StackGroup.CHRISTMAS_TREE),
     TUBING_HEAD_ADAPTER("Tubing head adapter", StackGroup.CHRISTMAS_TREE),
+    PRODUCTION_CHOKE("Production choke", StackGroup.CHRISTMAS_TREE),
 
     // Coiled-tubing pressure control equipment
     STRIPPER_PACKOFF("Stripper / packoff", StackGroup.CT_PRESSURE_CONTROL),
@@ -58,6 +59,38 @@ data class StackComponent(
     val height: Length? = null,
     val catalogItemId: String? = null,
     val provenance: DataProvenance,
+    /** How a valve is operated, when the component is a valve; null if not recorded. */
+    val operator: ValveOperator? = null,
+)
+
+@Serializable
+enum class ValveOperator(val label: String) {
+    MANUAL("Manual handwheel"),
+    HYDRAULIC("Hydraulic actuator"),
+    PNEUMATIC("Pneumatic actuator"),
+}
+
+@Serializable
+enum class TreeWingRole(val label: String) {
+    PRODUCTION("Production wing"),
+    KILL_INJECTION("Kill / injection wing"),
+}
+
+/**
+ * A horizontal branch of the tree from the flow tee/cross. Wing components are not in the
+ * vertical bore path, so they are kept apart from [ChristmasTree.components]; for them
+ * [StackComponent.height] means the face-to-face length along the branch.
+ */
+@Serializable
+data class TreeWingOutlet(
+    val id: String,
+    val side: OutletSide,
+    val role: TreeWingRole,
+    /** Id of the flow tee/cross in [ChristmasTree.components] this branch leaves from. */
+    val branchComponentId: String,
+    /** Wing valves and chokes, ordered from the tee/cross outward. */
+    val components: List<StackComponent>,
+    val provenance: DataProvenance,
 )
 
 /** Christmas Tree, components ordered from top to bottom. */
@@ -66,9 +99,14 @@ data class ChristmasTree(
     val id: String,
     val name: String,
     val components: List<StackComponent>,
-    /** Height of the wellhead/tubing head top above ground level, if known. */
+    /**
+     * Elevation of the wellhead top (tree landing flange) relative to ground level, if known.
+     * Used only when the well has no [Wellhead] definition; otherwise the elevation is
+     * calculated from the wellhead sections and the two are cross-checked.
+     */
     val wellheadTopAboveGroundLevel: Length? = null,
     val provenance: DataProvenance,
+    val wingOutlets: List<TreeWingOutlet> = emptyList(),
 )
 
 /** Configured CT pressure-control stack, components ordered from top to bottom. */

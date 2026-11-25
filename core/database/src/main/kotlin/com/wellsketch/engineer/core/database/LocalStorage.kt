@@ -12,8 +12,14 @@ class LocalStorage(context: Context) {
 
     val wellProjects: WellProjectRepository = RoomWellProjectRepository(database.wellProjectDao())
 
-    /** Seeds the clearly labelled synthetic demo projects when the database is empty. */
+    /**
+     * Seeds the clearly labelled synthetic demo projects when the database is empty, and
+     * upgrades demo projects stored by an earlier version with the current demo surface
+     * equipment (real projects are never changed).
+     */
     suspend fun seedDemoDataIfEmpty(nowEpochMillis: Long) {
-        DemoDataSeeder(database.wellProjectDao()).seedIfEmpty(nowEpochMillis)
+        val seeder = DemoDataSeeder(database.wellProjectDao())
+        seeder.seedIfEmpty(nowEpochMillis)
+        seeder.upgradeSyntheticDemos()
     }
 }

@@ -37,6 +37,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -59,9 +62,12 @@ import com.wellsketch.engineer.core.ui.components.ModuleTopBar
 import com.wellsketch.engineer.core.ui.components.NoticeCard
 import com.wellsketch.engineer.core.ui.components.ProvenanceBadge
 import com.wellsketch.engineer.core.ui.components.SectionCard
+import com.wellsketch.engineer.core.ui.components.surfaceObjectDetails
 import com.wellsketch.engineer.core.ui.components.wellObjectDetails
 import com.wellsketch.engineer.core.ui.format.UnitFormatter
+import com.wellsketch.engineer.core.ui.schematic.SurfaceDetailCanvas
 import com.wellsketch.engineer.core.ui.schematic.WellSchematicCanvas
+import com.wellsketch.engineer.domain.welldesign.SurfaceMode
 import com.wellsketch.engineer.domain.welldesign.WellDesignSnapshot
 import com.wellsketch.engineer.domain.welldesign.WellEdits
 import kotlinx.coroutines.launch
@@ -98,16 +104,29 @@ private fun WellDesignContent(
     onEvent: (WellDesignEvent) -> Unit,
 ) {
     val ctx = remember(snapshot.well) { WellGeometryContext(snapshot.well) }
+    var surfaceDetail by rememberSaveable { mutableStateOf(false) }
     val schematic = @Composable { modifier: Modifier ->
-        WellSchematicCanvas(
-            scene = snapshot.scene,
-            formatter = formatter,
-            selectedId = snapshot.selected?.id ?: state.selectedSurfaceBlock?.sourceId,
-            onElementSelected = { onEvent(WellDesignEvent.SelectElement(it?.id)) },
-            onSurfaceBlockSelected = { onEvent(WellDesignEvent.SelectSurfaceBlock(it)) },
-            surfaceBandHeight = 96.dp,
-            modifier = modifier,
-        )
+        Column(modifier) {
+            SurfaceModeBar(snapshot, surfaceDetail, { surfaceDetail = it }, onEvent)
+            if (surfaceDetail && snapshot.scene.hasSurface) {
+                SurfaceDetailCanvas(
+                    scene = snapshot.scene,
+                    selectedId = state.selectedSurfaceBlock?.sourceId,
+                    onSurfaceBlockSelected = { onEvent(WellDesignEvent.SelectSurfaceBlock(it)) },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            } else {
+                WellSchematicCanvas(
+                    scene = snapshot.scene,
+                    formatter = formatter,
+                    selectedId = snapshot.selected?.id ?: state.selectedSurfaceBlock?.sourceId,
+                    onElementSelected = { onEvent(WellDesignEvent.SelectElement(it?.id)) },
+                    onSurfaceBlockSelected = { onEvent(WellDesignEvent.SelectSurfaceBlock(it)) },
+                    surfaceBandHeight = 112.dp,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            }
+        }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         if (maxWidth >= 720.dp) {
@@ -199,13 +218,12 @@ private fun LazyListScope.wellDataItems(
         }
         state.selectedSurfaceBlock?.let { block ->
             item {
+                val ctStack = state.project?.ctOperations?.firstOrNull()?.rigUp?.pressureControlStack
+                val details = surfaceObjectDetails(block, well, ctStack, snapshot.surfaceStackup, f)
                 DetailCard(
-                    title = block.label,
-                    rows = listOf(
-                        "Height" to if (block.sizeIsSchematic) "Not provided (drawing placeholder)" else f.depth(Length.meters(block.height)),
-                        "Base above GL" to f.depth(Length.meters(block.bottomAboveGl)),
-                    ),
-                    provenance = null,
+                    title = details.title,
+                    rows = details.rows,
+                    provenance = details.provenance,
                     onClose = { onEvent(WellDesignEvent.ClearSelection) },
                     footnote = BREAKDOWN_PENDING_NOTE,
                     modifier = pad,
@@ -216,15 +234,20 @@ private fun LazyListScope.wellDataItems(
             Column(pad) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.project?.provenance?.let { ProvenanceBadge(it) }
-                    Text("Completion state:", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (snapshot.showsCompletion) "Completion state:" else "Drilling state: casing and open hole only",
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                 }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    snapshot.availableStates.forEach { s ->
-                        FilterChip(
-                            selected = s == snapshot.completionState,
-                            onClick = { onEvent(WellDesignEvent.SelectCompletionState(s)) },
-                            label = { Text(s.label) },
-                        )
+                if (snapshot.showsCompletion) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        snapshot.availableStates.forEach { s ->
+                            FilterChip(
+                                selected = s == snapshot.completionState,
+                                onClick = { onEvent(WellDesignEvent.SelectCompletionState(s)) },
+                                label = { Text(s.label) },
+                            )
+                        }
                     }
                 }
             }
@@ -244,6 +267,7 @@ private fun LazyListScope.wellDataItems(
                 LabeledValue("MD reference", ref.description)
             }
         }
+        surfaceItems(snapshot, f, onEvent, pad)
         item {
             val td = snapshot.scene.totalDepthMd
             val survey = well.activeSurvey
@@ -324,6 +348,96 @@ private fun LazyListScope.wellDataItems(
                 modifier = pad,
                 text = "Live sketch: updates immediately from the entered data. The detailed final well illustration " +
                     "is a separate view (planned) generated only from complete data.",
+            )
+        }
+    }
+}
+
+/** Surface configuration chips (drilling / completion / CT) and the surface-detail toggle. */
+@Composable
+private fun SurfaceModeBar(
+    snapshot: WellDesignSnapshot,
+    surfaceDetail: Boolean,
+    onSurfaceDetail: (Boolean) -> Unit,
+    onEvent: (WellDesignEvent) -> Unit,
+) {
+    if (snapshot.availableSurfaceModes.isEmpty()) return
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        snapshot.availableSurfaceModes.forEach { mode ->
+            FilterChip(
+                selected = mode == snapshot.surfaceMode,
+                onClick = { onEvent(WellDesignEvent.SelectSurfaceMode(mode)) },
+                label = { Text(mode.label, style = MaterialTheme.typography.labelMedium) },
+            )
+        }
+        FilterChip(
+            selected = surfaceDetail,
+            onClick = { onSurfaceDetail(!surfaceDetail) },
+            label = { Text("Surface detail", style = MaterialTheme.typography.labelMedium) },
+        )
+    }
+}
+
+/** Surface stack-up elevations (calculated from entered data) and editable cellar/wellhead data. */
+private fun LazyListScope.surfaceItems(
+    snapshot: WellDesignSnapshot,
+    f: UnitFormatter,
+    onEvent: (WellDesignEvent) -> Unit,
+    pad: Modifier,
+) {
+    val well = snapshot.well
+    val stackup = snapshot.surfaceStackup ?: return
+    fun elevation(v: Length?) = when {
+        v == null -> "Not calculated"
+        v < Length.ZERO -> "${f.depth(-v)} below GL"
+        else -> "${f.depth(v)} above GL"
+    }
+    item {
+        SectionCard("Surface – ${snapshot.surfaceMode?.label ?: "not defined"}", pad) {
+            well.cellar?.let { cellar ->
+                DepthField("Cellar depth below GL", cellar.depthBelowGroundLevel, f, { v ->
+                    onEvent(WellDesignEvent.Edit { w -> WellEdits.setCellarDepth(w, v) })
+                })
+            }
+            well.wellhead?.let { wh ->
+                wh.baseRelativeToGroundLevel?.let { base ->
+                    DepthField("Wellhead base relative to GL (− below)", base, f, { v ->
+                        onEvent(WellDesignEvent.Edit { w -> WellEdits.setWellheadBase(w, v) })
+                    })
+                }
+                wh.sections.forEach { section ->
+                    section.height?.let { h ->
+                        DepthField("${section.name} height", h, f, { v ->
+                            onEvent(WellDesignEvent.Edit { w -> WellEdits.setWellheadSectionHeight(w, section.id, v) })
+                        })
+                    }
+                }
+            }
+            LabeledValue("Wellhead position", stackup.wellheadBasis.label)
+            LabeledValue("Wellhead base", elevation(stackup.wellheadBase))
+            LabeledValue("Wellhead top flange", elevation(stackup.wellheadTop))
+            LabeledValue("RKB to wellhead top", stackup.rkbToWellheadTop?.let(f::depth) ?: "Not calculated")
+            when (snapshot.surfaceMode) {
+                SurfaceMode.DRILLING -> {
+                    LabeledValue("Drilling stack top", elevation(stackup.drillingStackTop))
+                    LabeledValue("Drill floor", elevation(stackup.drillFloor))
+                    LabeledValue("Clearance under rotary beams", stackup.clearanceUnderRotaryBeams?.let(f::depth) ?: "Not calculated")
+                }
+                SurfaceMode.COMPLETION -> {
+                    LabeledValue("Tree top (with cap)", elevation(stackup.treeTopWithCap))
+                }
+                SurfaceMode.COILED_TUBING -> {
+                    LabeledValue("Tree top (cap removed)", elevation(stackup.treeTopWithoutCap))
+                    LabeledValue("Injector base (CT stack top)", elevation(stackup.ctStackTop))
+                }
+                null -> Unit
+            }
+            Text(
+                "Elevations are calculated only from entered heights; drawing placeholders are never used.",
+                style = MaterialTheme.typography.bodySmall,
             )
         }
     }

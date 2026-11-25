@@ -22,6 +22,9 @@ object SchematicPalette {
     val selection = Color(0xFFFFB300)
     val holeFluid = Color(0xFFDDE8EF)
     val ctLine = Color(0xFFD08C12)
+    val soilTop = Color(0xFFAD8D66)
+    val soilBottom = Color(0xFF6E5236)
+    val soilLine = Color(0x596E5236)
 
     fun elementColor(e: SchematicElement): Color = when (val d = e.detail) {
         is ElementDetail.Casing -> if (d.role.isLiner) Color(0xFF5E7489) else when (d.role) {
@@ -85,7 +88,7 @@ object SchematicPalette {
 
     fun surfaceColor(kind: SurfaceBlockKind): Color = when (kind) {
         SurfaceBlockKind.WELLHEAD, SurfaceBlockKind.TREE_ADAPTER -> Color(0xFF5B6770)
-        SurfaceBlockKind.TREE_CAP, SurfaceBlockKind.TREE_VALVE, SurfaceBlockKind.TREE_TEE -> Color(0xFF2F7D4F)
+        SurfaceBlockKind.TREE_CAP, SurfaceBlockKind.TREE_VALVE, SurfaceBlockKind.TREE_TEE -> Color(0xFFC0392B)
         SurfaceBlockKind.STRIPPER -> Color(0xFF8E3B2E)
         SurfaceBlockKind.BOP -> Color(0xFFB23A2A)
         SurfaceBlockKind.RISER, SurfaceBlockKind.CROSSOVER -> Color(0xFF6F7C87)
@@ -96,5 +99,10 @@ object SchematicPalette {
         SurfaceBlockKind.CONTROL_CABIN -> Color(0xFF4A6378)
         SurfaceBlockKind.POWER_PACK -> Color(0xFF4F5E3A)
         SurfaceBlockKind.OTHER -> Color(0xFF7A848C)
+        SurfaceBlockKind.TREE_WING_VALVE, SurfaceBlockKind.TREE_CHOKE -> Color(0xFFC0392B)
+        SurfaceBlockKind.DRILLING_BELL_NIPPLE -> Color(0xFF9AA5AF)
+        SurfaceBlockKind.DRILLING_ANNULAR, SurfaceBlockKind.DRILLING_RAM, SurfaceBlockKind.DRILLING_SPOOL -> Color(0xFFC62828)
+        SurfaceBlockKind.CELLAR -> Color(0xFFC2BDB1)
+        SurfaceBlockKind.SUBSTRUCTURE, SurfaceBlockKind.RIG_FLOOR -> Color(0xFF6E7A85)
     }
 }
