@@ -55,3 +55,21 @@ class UnitFormatterFieldMetricTest {
         assertEquals(1.25, UnitFormatter.parseNumber(" 1,25 "))
     }
 }
+
+class NominalSizeTest {
+    private val o = UnitFormatter(com.wellsketch.engineer.core.model.units.UnitSystem.OILFIELD)
+
+    @Test
+    fun fractionalInchSizes() {
+        assertEquals("13-3/8 in", o.nominalSize(Length.inches(13.375)))
+        assertEquals("9-5/8 in", o.nominalSize(Length.inches(9.625)))
+        assertEquals("7 in", o.nominalSize(Length.inches(7.0)))
+        assertEquals("20 in", o.nominalSize(Length.inches(20.0)))
+        assertEquals("2-7/8 in", o.nominalSize(Length.inches(2.875)))
+        assertEquals("4-1/2 in", o.nominalSize(Length.inches(4.5)))
+        assertEquals("1-3/4 in", o.nominalSize(Length.inches(1.75)))
+        // not a 1/16 multiple: decimal fallback
+        assertEquals("6.184 in", o.nominalSize(Length.inches(6.184)))
+        assertEquals("177.8 mm", UnitFormatter(com.wellsketch.engineer.core.model.units.UnitSystem.METRIC).nominalSize(Length.inches(7.0)))
+    }
+}

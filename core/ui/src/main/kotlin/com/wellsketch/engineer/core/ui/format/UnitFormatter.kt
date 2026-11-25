@@ -70,6 +70,29 @@ class UnitFormatter(val system: UnitSystem) {
         "${number(length.millimeters, 1)} mm"
     }
 
+    /**
+     * Nominal size label of a tubular from its OD: fractional inches ("13-3/8 in", "7 in")
+     * in inch-based systems when the OD is a multiple of 1/16 in, otherwise the formatted
+     * diameter ("339.7 mm" in metric).
+     */
+    fun nominalSize(od: Length): String {
+        if (!inchDiameters) return diameter(od)
+        val sixteenths = Math.round(od.inches * 16.0)
+        if (kotlin.math.abs(od.inches * 16.0 - sixteenths) > 0.016) return diameter(od)
+        val whole = sixteenths / 16
+        var num = sixteenths % 16
+        var den = 16L
+        while (num != 0L && num % 2 == 0L) {
+            num /= 2
+            den /= 2
+        }
+        return when {
+            num == 0L -> "$whole in"
+            whole == 0L -> "$num/$den in"
+            else -> "$whole-$num/$den in"
+        }
+    }
+
     // --- Pressure ------------------------------------------------------------------------
     fun pressureValue(pressure: Pressure): Double = if (psiPressures) pressure.psi else pressure.bar
     fun pressureFromValue(value: Double): Pressure = if (psiPressures) Pressure.psi(value) else Pressure.bar(value)
