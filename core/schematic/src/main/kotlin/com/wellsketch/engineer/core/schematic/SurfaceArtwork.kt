@@ -162,7 +162,7 @@ object SurfaceArtwork {
         // Hydraulic hoses run behind the BOP stack to the accumulator side.
         if (site.rig != null) axis.filter { it.kind == SurfaceBlockKind.DRILLING_RAM || it.kind == SurfaceBlockKind.DRILLING_ANNULAR }.forEach { pen.hoses(it, site.rig) }
 
-        val flanges = axis.mapIndexed { i, b -> flangesOf(b, axis.getOrNull(i - 1)) }
+        val flanges = matedFlanges(axis)
         axis.forEachIndexed { i, b -> pen.body(b, flanges[i], stubRadius) }
         // Flanged joints: mating flanges with studs through both and nuts on the outer faces.
         axis.forEachIndexed { i, b ->
@@ -206,6 +206,24 @@ object SurfaceArtwork {
 
     /** Flange widths (null = no flange at that end) and thickness of an axis block. */
     internal data class Flanges(val bottom: Double?, val top: Double?, val thickness: Double)
+
+    /**
+     * Flanges of the axis stack (sorted bottom-up). Two flanges that meet at a joint are one
+     * connection, so both are drawn at the same width (the larger drawing width of the two).
+     */
+    internal fun matedFlanges(axis: List<SurfaceBlock>): List<Flanges> {
+        val out = axis.mapIndexed { i, b -> flangesOf(b, axis.getOrNull(i - 1)) }.toMutableList()
+        for (i in 1 until axis.size) {
+            val lower = out[i - 1]
+            val upper = out[i]
+            if (lower.top == null || upper.bottom == null) continue
+            if (abs(axis[i - 1].topAboveGl - axis[i].bottomAboveGl) >= 1e-6) continue
+            val w = max(lower.top, upper.bottom)
+            out[i - 1] = lower.copy(top = w)
+            out[i] = upper.copy(bottom = w)
+        }
+        return out
+    }
 
     private fun flangesOf(b: SurfaceBlock, below: SurfaceBlock?): Flanges {
         val belowTop = below?.let { flangesOf(it, null).top }
@@ -404,31 +422,51 @@ private class Pen(val px: Double) {
         lowerSrc: String, upperSrc: String,
     ) {
         val forged = ArtColors.FORGED
+        val lower = lowerWidth != null && lowerThickness != null
+        val upper = upperWidth != null
+        // Mating flanges stand a few millimetres apart on the ring gasket; draw that gap so
+        // the two flanges read as separate forgings.
+        val gap = if (lower && upper && shows(0.004)) 0.008 else 0.0
         var bottom = y
         var top = y
-        if (lowerWidth != null && lowerThickness != null) {
-            rect(-lowerWidth / 2, y - lowerThickness, lowerWidth / 2, y, ArtFill.CylinderX(forged), lowerSrc, corner = 0.008)
+        if (lower) {
+            rect(-lowerWidth!! / 2, y - lowerThickness!!, lowerWidth / 2, y - gap / 2, ArtFill.CylinderX(forged), lowerSrc, corner = 0.012)
             bottom = y - lowerThickness
         }
-        if (upperWidth != null) {
-            rect(-upperWidth / 2, y, upperWidth / 2, y + upperThickness, ArtFill.CylinderX(forged), upperSrc, corner = 0.008)
+        if (upper) {
+            rect(-upperWidth!! / 2, y + gap / 2, upperWidth / 2, y + upperThickness, ArtFill.CylinderX(forged), upperSrc, corner = 0.012)
             top = y + upperThickness
         }
-        val width = listOfNotNull(lowerWidth, upperWidth).minOrNull() ?: return
-        if (lowerWidth != null && upperWidth != null && shows(0.01)) line(-width / 2, y, width / 2, y, ArtColors.STUD, 0.0, upperSrc)
-        studs(-width / 2 + 0.035, width / 2 - 0.035, bottom, top, upperSrc)
+        if (!lower || !upper) return // an unmated flange carries no studs
+        val width = min(lowerWidth!!, upperWidth!!)
+        if (gap > 0.0) rect(-width * 0.31, y - gap / 2, width * 0.31, y + gap / 2, ArtFill.Solid(ArtColors.STUD), upperSrc, stroke = null)
+        studs(width / 2 - 0.05, bottom, top, gap, y, upperSrc)
     }
 
-    /** Visible studs with nuts across a flange (side elevation). */
-    fun studs(x0: Double, x1: Double, yBottom: Double, yTop: Double, src: String) {
-        val count = ((x1 - x0) / 0.105).roundToInt().coerceIn(3, 10)
-        val spacing = (x1 - x0) / count
-        if (!shows(spacing * 0.35)) return
+    /**
+     * Front half of a stud circle of radius [boltRadius], seen from the side: studs are hidden
+     * inside the flanges, so only the nuts on the outer faces, the stud ends beyond the nuts and
+     * the stud in the gasket gap show. Spacing follows the circle (closer towards the edges)
+     * and nuts narrow towards the edges, which gives the flange its round look.
+     */
+    fun studs(boltRadius: Double, yBottom: Double, yTop: Double, gap: Double, gapY: Double, src: String) {
+        if (boltRadius <= 0.0) return
+        val count = (2 * boltRadius / 0.10).roundToInt().coerceIn(4, 9)
+        val nutW = (boltRadius * 0.16).coerceIn(0.035, 0.065)
+        if (!shows(nutW * 0.6)) return
+        val nutH = nutW * 0.68
+        val stud = ArtFill.Solid(ArtColors.STUD)
+        val nut = ArtFill.CylinderX(ArtColors.NUT)
         for (i in 0 until count) {
-            val x = x0 + (i + 0.5) * spacing
-            rect(x - 0.011, yBottom - 0.045, x + 0.011, yTop + 0.045, ArtFill.Solid(ArtColors.STUD), src, stroke = null)
-            rect(x - 0.026, yTop, x + 0.026, yTop + 0.032, ArtFill.CylinderX(ArtColors.NUT), src, stroke = null)
-            rect(x - 0.026, yBottom - 0.032, x + 0.026, yBottom, ArtFill.CylinderX(ArtColors.NUT), src, stroke = null)
+            val theta = -PI / 2 + (i + 0.5) * PI / count
+            val x = boltRadius * sin(theta)
+            val half = nutW / 2 * (0.45 + 0.55 * cos(theta))
+            val sr = half * 0.42
+            rect(x - sr, yTop + nutH, x + sr, yTop + nutH + 0.016, stud, src, stroke = null)
+            rect(x - sr, yBottom - nutH - 0.016, x + sr, yBottom - nutH, stud, src, stroke = null)
+            if (gap > 0.0) rect(x - sr, gapY - gap / 2, x + sr, gapY + gap / 2, stud, src, stroke = null)
+            rect(x - half, yTop, x + half, yTop + nutH, nut, src, stroke = ArtColors.OUTLINE)
+            rect(x - half, yBottom - nutH, x + half, yBottom, nut, src, stroke = ArtColors.OUTLINE)
         }
     }
 
@@ -436,12 +474,29 @@ private class Pen(val px: Double) {
     fun flangeV(s: Int, d: Double, thick: Double, y: Double, height: Double, src: String) {
         srect(s, d, d + thick, y - height / 2, y + height / 2, ArtFill.CylinderY(ArtColors.FORGED), src, corner = 0.006)
         val count = (height / 0.1).roundToInt().coerceIn(2, 5)
-        val spacing = (height - 0.06) / count
-        if (!shows(spacing * 0.35)) return
+        val bolt = height / 2 - 0.035
+        if (!shows(bolt / count * 0.5)) return
         for (i in 0 until count) {
-            val yy = y - height / 2 + 0.03 + (i + 0.5) * spacing
-            srect(s, d - 0.03, d + thick + 0.03, yy - 0.009, yy + 0.009, ArtFill.Solid(ArtColors.STUD), src, stroke = null)
+            val theta = -PI / 2 + (i + 0.5) * PI / count
+            val yy = y + bolt * sin(theta)
+            val half = 0.014 * (0.45 + 0.55 * cos(theta))
+            // nuts on both faces; the stud itself is inside the flange
+            srect(s, d - 0.022, d, yy - half, yy + half, ArtFill.CylinderY(ArtColors.NUT), src, stroke = null)
+            srect(s, d + thick, d + thick + 0.022, yy - half, yy + half, ArtFill.CylinderY(ArtColors.NUT), src, stroke = null)
         }
+    }
+
+    /**
+     * Forged hub (weld-neck taper) joining a flange of width [flangeWidth] at elevation
+     * [face] to a body of half-width [bodyHalf]; [dir] = +1 when the body lies above the face.
+     */
+    fun hub(face: Double, dir: Int, flangeWidth: Double, bodyHalf: Double, height: Double, color: Long, src: String) {
+        val r0 = max(bodyHalf, flangeWidth / 2 * 0.82)
+        val y1 = face + dir * height
+        poly(
+            listOf(ArtPoint(-r0, face), ArtPoint(r0, face), ArtPoint(bodyHalf, y1), ArtPoint(-bodyHalf, y1)),
+            ArtFill.CylinderX(color), src,
+        )
     }
 
     // -----------------------------------------------------------------------------------
@@ -453,7 +508,7 @@ private class Pen(val px: Double) {
         val yt = b.topAboveGl - (if (f.top != null) f.thickness else 0.0)
         val src = b.sourceId
         when (b.kind) {
-            SurfaceBlockKind.WELLHEAD -> wellheadSection(b, yb, yt, stubRadius)
+            SurfaceBlockKind.WELLHEAD -> wellheadSection(b, f, yb, yt, stubRadius)
             SurfaceBlockKind.TREE_ADAPTER -> adapter(b, yb, yt, Widths.WELLHEAD_BODY / 2 * 0.95, Widths.TREE_BODY / 2, ArtColors.STEEL)
             SurfaceBlockKind.TREE_VALVE -> verticalValve(b, yb, yt, ArtColors.TREE_RED)
             SurfaceBlockKind.TREE_TEE -> flowTee(b, yb, yt)
@@ -467,8 +522,12 @@ private class Pen(val px: Double) {
             SurfaceBlockKind.INJECTOR -> injector(b)
             SurfaceBlockKind.GOOSENECK -> gooseneck(b)
             SurfaceBlockKind.DRILLING_SPOOL -> {
-                rect(-Widths.SPOOL_BODY / 2, yb, Widths.SPOOL_BODY / 2, yt, ArtFill.CylinderX(ArtColors.BOP_RED), src, dashed = b.sizeIsSchematic)
-                outlets(b, Widths.SPOOL_BODY / 2, (yb + yt) / 2, ArtColors.STEEL)
+                val w = Widths.SPOOL_BODY / 2
+                rect(-w, yb, w, yt, ArtFill.CylinderX(ArtColors.BOP_RED), src, dashed = b.sizeIsSchematic)
+                val hh = min(0.06, (yt - yb) * 0.15)
+                f.bottom?.let { hub(yb, 1, it, w, hh, ArtColors.BOP_RED, src) }
+                f.top?.let { hub(yt, -1, it, w, hh, ArtColors.BOP_RED, src) }
+                outlets(b, w, (yb + yt) / 2, ArtColors.STEEL)
             }
             SurfaceBlockKind.DRILLING_RAM -> ramPreventer(b, yb, yt)
             SurfaceBlockKind.DRILLING_ANNULAR -> annular(b, yb, yt)
@@ -489,31 +548,37 @@ private class Pen(val px: Double) {
         }
     }
 
-    private fun wellheadSection(b: SurfaceBlock, yb: Double, yt: Double, stubRadius: Double) {
+    private fun wellheadSection(b: SurfaceBlock, f: SurfaceArtwork.Flanges, yb: Double, yt: Double, stubRadius: Double) {
         val w = Widths.WELLHEAD_BODY / 2
         val src = b.sourceId
         val metal = ArtFill.CylinderX(ArtColors.STEEL)
         val dashed = b.sizeIsSchematic
+        val chh = b.drawing.wellheadSection == WellheadSectionType.CASING_HEAD_HOUSING
         var bodyBottom = yb
-        if (b.drawing.wellheadSection == WellheadSectionType.CASING_HEAD_HOUSING) {
-            // slip-on / threaded bottom on the surface casing, then the housing body
-            val neck = b.bottomAboveGl + (yt - b.bottomAboveGl) * 0.22
+        if (chh) {
+            // Slip-on / threaded bottom on the surface casing: a socket a little larger than the
+            // casing with a weld bead, tapering out to the housing body.
             val r = stubRadius + 0.035
-            poly(listOf(ArtPoint(-r, b.bottomAboveGl), ArtPoint(r, b.bottomAboveGl), ArtPoint(w, neck), ArtPoint(-w, neck)), metal, src)
-            rect(-r - 0.01, b.bottomAboveGl, r + 0.01, b.bottomAboveGl + 0.03, ArtFill.Solid(ArtColors.STEEL_DARK), src)
+            val socketTop = b.bottomAboveGl + (yt - b.bottomAboveGl) * 0.10
+            val neck = b.bottomAboveGl + (yt - b.bottomAboveGl) * 0.24
+            rect(-r, b.bottomAboveGl, r, socketTop, metal, src)
+            poly(listOf(ArtPoint(-r, socketTop), ArtPoint(r, socketTop), ArtPoint(w, neck), ArtPoint(-w, neck)), metal, src)
+            rect(-r - 0.012, b.bottomAboveGl, r + 0.012, b.bottomAboveGl + 0.028, ArtFill.CylinderX(ArtColors.STEEL_DARK), src, corner = 0.01)
             bodyBottom = neck
         }
         rect(-w, bodyBottom, w, yt, metal, src, dashed = dashed)
+        val hh = min(0.075, (yt - bodyBottom) * 0.16)
+        if (!chh) f.bottom?.let { hub(yb, 1, it, w, hh, ArtColors.STEEL, src) }
+        f.top?.let { hub(yt, -1, it, w, hh, ArtColors.STEEL, src) }
         if (shows(0.02)) {
             // test / injection ports on the body
-            circle(w * 0.45, bodyBottom + (yt - bodyBottom) * 0.72, 0.02, ArtFill.Solid(ArtColors.STEEL_DARK), src)
-            circle(-w * 0.45, bodyBottom + (yt - bodyBottom) * 0.72, 0.02, ArtFill.Solid(ArtColors.STEEL_DARK), src)
+            val py = bodyBottom + (yt - bodyBottom) * 0.70
+            for (s in listOf(-1, 1)) {
+                circle(s * w * 0.45, py, 0.022, ArtFill.Radial(ArtColors.STEEL_DARK), src)
+                circle(s * w * 0.45, py, 0.008, ArtFill.Solid(ArtColors.NUT), src, stroke = null)
+            }
         }
-        val outletY = if (b.drawing.wellheadSection == WellheadSectionType.CASING_HEAD_HOUSING) {
-            bodyBottom + (yt - bodyBottom) * 0.45
-        } else {
-            (yb + yt) / 2
-        }
+        val outletY = if (chh) bodyBottom + (yt - bodyBottom) * 0.42 else yb + (yt - yb) * 0.42
         outlets(b, w, outletY, ArtColors.STEEL)
     }
 
@@ -536,7 +601,7 @@ private class Pen(val px: Double) {
                         if (fit == OutletFitting.ACTUATED_GATE_VALVE) {
                             actuatorUp(xc, y + 0.12, 0.11, 0.28, src)
                         } else {
-                            rect(xc - 0.06, y + 0.12, xc + 0.06, y + 0.22, ArtFill.CylinderX(valveColor), src)
+                            rect(xc - 0.075, y - 0.075, xc + 0.075, y + 0.075, ArtFill.Radial(valveColor), src, corner = 0.012)
                             handwheel(xc, y, 0.15, src)
                         }
                         d += 0.39

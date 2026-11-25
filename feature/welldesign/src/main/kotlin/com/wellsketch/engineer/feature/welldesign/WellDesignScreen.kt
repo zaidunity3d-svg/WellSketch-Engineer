@@ -64,6 +64,8 @@ import com.wellsketch.engineer.core.ui.components.ProvenanceBadge
 import com.wellsketch.engineer.core.ui.components.SectionCard
 import com.wellsketch.engineer.core.ui.components.surfaceObjectDetails
 import com.wellsketch.engineer.core.ui.components.wellObjectDetails
+import com.wellsketch.engineer.core.engineering.summary.KeyDepths
+import com.wellsketch.engineer.core.ui.format.KeyDepthText
 import com.wellsketch.engineer.core.ui.format.UnitFormatter
 import com.wellsketch.engineer.core.ui.schematic.SurfaceDetailCanvas
 import com.wellsketch.engineer.core.ui.schematic.WellSchematicCanvas
@@ -112,6 +114,7 @@ private fun WellDesignContent(
                 SurfaceDetailCanvas(
                     scene = snapshot.scene,
                     selectedId = state.selectedSurfaceBlock?.sourceId,
+                    lengthInFeet = formatter.depthUnit == "ft",
                     onSurfaceBlockSelected = { onEvent(WellDesignEvent.SelectSurfaceBlock(it)) },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
@@ -254,6 +257,17 @@ private fun LazyListScope.wellDataItems(
         }
         if (state.project?.isSyntheticDemo == true) {
             item { NoticeCard("Synthetic demonstration data. Not real well, catalog or test data.", pad, warning = true) }
+        }
+        item {
+            // Read-only summary; MD and TVD share the canonical datum so they are never mixed.
+            val keyDepths = remember(well, snapshot.completionState, snapshot.showsCompletion) {
+                KeyDepths.build(well, snapshot.completionState.takeIf { snapshot.showsCompletion }, ctx)
+            }
+            if (keyDepths.isNotEmpty()) {
+                SectionCard("Key depths (MD and TVD from ${ref.shortLabel})", pad) {
+                    keyDepths.forEach { row -> LabeledValue(KeyDepthText.label(row, f), KeyDepthText.value(row, f)) }
+                }
+            }
         }
         item {
             SectionCard("Datums (elevation above MSL)", pad) {

@@ -95,10 +95,14 @@ object SurfaceLayouts {
     private const val ROTARY_BEAM_DEPTH = 0.45
     private const val STUB_BELOW = 0.35
 
-    /** Drawing widths (metres) used by the layout and the artwork. Visual only. */
+    /**
+     * Drawing widths (metres) used by the layout and the artwork. Visual only. The wellhead
+     * top flange and the drilling BOP flanges share one width because they mate at the same
+     * connection; the artwork also draws any two mating flanges at a common width.
+     */
     object Widths {
         const val WELLHEAD_BODY = 0.62
-        const val WELLHEAD_FLANGE = 0.84
+        const val WELLHEAD_FLANGE = 0.90
         const val TREE_BODY = 0.40
         const val TREE_FLANGE = 0.46
         const val TREE_BRANCH_END = 0.36

@@ -39,7 +39,9 @@ import com.wellsketch.engineer.core.engineering.trajectory.TrajectorySource
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.schematic.CalloutKind
 import com.wellsketch.engineer.core.schematic.CalloutLayout
+import com.wellsketch.engineer.core.schematic.ElementDetail
 import com.wellsketch.engineer.core.schematic.ElementKind
+import com.wellsketch.engineer.core.schematic.LabelPlacer
 import com.wellsketch.engineer.core.schematic.FormationBand
 import com.wellsketch.engineer.core.schematic.MarkerKind
 import com.wellsketch.engineer.core.schematic.ProjectionConfig
@@ -47,9 +49,16 @@ import com.wellsketch.engineer.core.schematic.SchematicElement
 import com.wellsketch.engineer.core.schematic.SchematicHitTester
 import com.wellsketch.engineer.core.schematic.SchematicProjection
 import com.wellsketch.engineer.core.schematic.SchematicScene
+import com.wellsketch.engineer.core.schematic.SketchLabel
+import com.wellsketch.engineer.core.schematic.SketchLabelKind
+import com.wellsketch.engineer.core.schematic.SketchLabels
 import com.wellsketch.engineer.core.schematic.SurfaceArtwork
 import com.wellsketch.engineer.core.schematic.SurfaceBlock
+import com.wellsketch.engineer.core.model.well.CompletionComponentType
+import com.wellsketch.engineer.core.model.well.PerforationStatus
+import com.wellsketch.engineer.core.ui.format.SketchLabelText
 import com.wellsketch.engineer.core.ui.format.UnitFormatter
+import kotlin.math.hypot
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -103,6 +112,7 @@ fun WellSchematicCanvas(
     val artwork = remember(projection) {
         projection?.takeIf { it.surfaceScale > 0.0 }?.let { SurfaceArtwork.build(it.scene, it.surfaceScale) }
     }
+    val depthLabels = remember(scene) { SketchLabels.collect(scene) }
     val onElement by rememberUpdatedState(onElementSelected)
     val onBlock by rememberUpdatedState(onSurfaceBlockSelected)
 
@@ -151,8 +161,9 @@ fun WellSchematicCanvas(
         }
         clipRect(left = p.columnRight.toFloat(), top = p.wellTopY.toFloat(), right = size.width, bottom = size.height) {
             shapes.forEach { drawElement(p, it, it.element.id == selectedId) }
-            drawMarkers(p, textMeasurer, formatter)
+            drawMarkers(p)
         }
+        drawDepthLabels(p, textMeasurer, formatter, depthLabels)
         if (p.nearSurfacePx > 0.0) drawScaleBreak(p.columnRight.toFloat(), size.width, p.wellTopY.toFloat())
         drawSurface(p, artwork, textMeasurer, selectedId)
         if (p.scene.trajectorySource == TrajectorySource.ASSUMED_VERTICAL) {
@@ -246,12 +257,118 @@ private fun DrawScope.drawElement(p: SchematicProjection, shape: ElementShape, s
         if (e.kind == ElementKind.CEMENT) drawPath(path, base.darken(0.8f), style = Stroke(width = 0.6.dp.toPx()))
         if (selected) drawPath(path, SchematicPalette.selection, style = Stroke(width = 2.5.dp.toPx()))
     }
+    val type = (e.detail as? ElementDetail.Component)?.type
+    if (type == CompletionComponentType.PACKER) drawPackerDetail(p, e)
 }
 
-private fun DrawScope.drawMarkers(p: SchematicProjection, tm: TextMeasurer, formatter: UnitFormatter) {
+/**
+ * Packer exterior: slips (hatched bands) above and below the sealing elements (dark rubber
+ * bands). A drawing of the component's outside only, not its internals.
+ */
+private fun DrawScope.drawPackerDetail(p: SchematicProjection, e: SchematicElement) {
+    val length = e.mdBottom - e.mdTop
+    if (length <= 0.0 || length * p.pathScale < 10.dp.toPx()) return
+    val r = e.outerRadius
+    val rubber = Color(0xFF26292D)
+    fun across(md: Double, color: Color, width: Float) {
+        val a = p.point(md, -r)
+        val b = p.point(md, r)
+        drawLine(color, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), strokeWidth = width)
+    }
+    // three sealing elements in the middle of the packer
+    val bandWidth = (length * p.pathScale * 0.09).toFloat().coerceIn(1.5f, 4.dp.toPx())
+    for (k in 0 until 3) across(e.mdTop + length * (0.40 + 0.10 * k), rubber, bandWidth)
+    // slips: short diagonal teeth near both ends
+    val teeth = 5
+    for (zone in listOf(0.16, 0.80)) {
+        val md0 = e.mdTop + length * zone
+        val md1 = md0 + length * 0.08
+        for (side in listOf(-1.0, 1.0)) {
+            for (k in 0 until teeth) {
+                val rr = side * r * (0.35 + 0.65 * k / (teeth - 1))
+                val a = p.point(md0, rr)
+                val b = p.point(md1, rr - side * r * 0.12)
+                drawLine(Color(0xCC1E2A33), Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), strokeWidth = 1.dp.toPx())
+            }
+        }
+    }
+}
+
+/** Small arrowhead at the middle of [from] -> [to], pointing towards [to]. */
+private fun DrawScope.inflowArrow(from: Offset, to: Offset, color: Color) {
+    val dx = to.x - from.x
+    val dy = to.y - from.y
+    val len = hypot(dx, dy)
+    if (len < 6.dp.toPx()) return
+    val ux = dx / len
+    val uy = dy / len
+    val tip = Offset(from.x + dx * 0.75f, from.y + dy * 0.75f)
+    val back = 3.dp.toPx()
+    val half = 2.dp.toPx()
+    val path = Path().apply {
+        moveTo(tip.x, tip.y)
+        lineTo(tip.x - ux * back - uy * half, tip.y - uy * back + ux * half)
+        lineTo(tip.x - ux * back + uy * half, tip.y - uy * back - ux * half)
+        close()
+    }
+    drawPath(path, color.darken(0.7f))
+}
+
+/**
+ * Depth labels of shoes, liner tops, end of tubing, packers, plugs and perforations, placed
+ * beside their anchors without overlapping (leader lines when a label had to move).
+ */
+private fun DrawScope.drawDepthLabels(p: SchematicProjection, tm: TextMeasurer, formatter: UnitFormatter, labels: List<SketchLabel>) {
+    if (labels.isEmpty()) return
+    val style = TextStyle(fontSize = 9.sp, color = SchematicPalette.ink)
+    val padX = 3.dp.toPx()
+    val padY = 1.dp.toPx()
+    val outward = 6.dp.toPx() / p.radialScale
+    val maxTextWidth = max(60.dp.toPx(), size.width * 0.5f).toInt()
+    val texts = labels.map { l ->
+        tm.measure(
+            AnnotatedString(SketchLabelText.of(l, formatter)), style = style,
+            overflow = TextOverflow.Ellipsis, maxLines = 1, constraints = Constraints(maxWidth = maxTextWidth),
+        )
+    }
+    val requests = labels.mapIndexed { i, l ->
+        val md = if (l.kind == SketchLabelKind.PERFORATIONS) (l.md + (l.mdBottom ?: l.md)) / 2 else l.md
+        val a = p.point(md, l.radius + outward)
+        val m = p.point(md, -(l.radius + outward))
+        LabelPlacer.Request(
+            i.toString(), a.x, a.y, texts[i].size.width + 2.0 * padX, texts[i].size.height + 2.0 * padY,
+            leftAnchorX = m.x, leftAnchorY = m.y,
+        )
+    }
+    val placed = LabelPlacer.place(
+        requests, offset = 6.dp.toPx().toDouble(),
+        minX = p.columnRight + 2.dp.toPx(), maxX = size.width - 2.dp.toPx().toDouble(),
+        minY = p.wellTopY + 2.dp.toPx(), maxY = size.height - 18.dp.toPx().toDouble(),
+        gap = 2.dp.toPx().toDouble(),
+    )
+    for (pl in placed) {
+        val i = pl.id.toInt()
+        val leftOfAnchor = pl.x + pl.width <= pl.anchorX
+        val endX = if (leftOfAnchor) pl.x + pl.width else pl.x
+        val endY = (pl.y + pl.height / 2)
+        drawLine(
+            SchematicPalette.ink.copy(alpha = 0.55f), Offset(pl.anchorX.toFloat(), pl.anchorY.toFloat()),
+            Offset(endX.toFloat(), endY.toFloat()), strokeWidth = 0.8.dp.toPx(),
+        )
+        drawRoundRect(
+            SchematicPalette.paper.copy(alpha = 0.88f), topLeft = Offset(pl.x.toFloat(), pl.y.toFloat()),
+            size = Size(pl.width.toFloat(), pl.height.toFloat()),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+        )
+        drawText(texts[i], topLeft = Offset(pl.x.toFloat() + padX, pl.y.toFloat() + padY))
+    }
+}
+
+private fun DrawScope.drawMarkers(p: SchematicProjection) {
     // Perforation tunnels as spikes through casing and cement into the formation (symbolic length).
     p.scene.elements.filter { it.kind == ElementKind.PERFORATION }.forEach { e ->
         val color = SchematicPalette.elementColor(e)
+        val open = (e.detail as? ElementDetail.Perforation)?.status == PerforationStatus.OPEN
         val stepMd = max(4.dp.toPx() / p.pathScale, 1e-3)
         val count = min(200, ceil((e.mdBottom - e.mdTop) / stepMd).toInt() + 1)
         for (i in 0 until count) {
@@ -260,6 +377,8 @@ private fun DrawScope.drawMarkers(p: SchematicProjection, tm: TextMeasurer, form
                 val a = p.point(md, side * e.innerRadius)
                 val b = p.point(md, side * e.outerRadius)
                 drawLine(color, Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), strokeWidth = 1.5.dp.toPx())
+                // Open perforations: inflow arrowheads pointing into the wellbore.
+                if (open && i % 2 == 0) inflowArrow(Offset(b.x.toFloat(), b.y.toFloat()), Offset(a.x.toFloat(), a.y.toFloat()), color)
             }
         }
     }
@@ -294,16 +413,6 @@ private fun DrawScope.drawMarkers(p: SchematicProjection, tm: TextMeasurer, form
                     drawLine(Color(0xFF2E6F9E), Offset(a.x.toFloat(), a.y.toFloat()), Offset(b.x.toFloat(), b.y.toFloat()), strokeWidth = 2.dp.toPx())
                 }
             }
-        }
-        // Depth labels on the right-hand side so edits are easy to see on the sketch.
-        val labelText = when (m.kind) {
-            MarkerKind.CASING_SHOE -> "Shoe ${formatter.depth(Length.meters(m.md))}"
-            MarkerKind.END_OF_TUBING -> "EOT ${formatter.depth(Length.meters(m.md))}"
-            else -> null
-        }
-        if (labelText != null) {
-            val anchor = p.point(m.md, m.radius + widthR)
-            label(tm, labelText, anchor.x.toFloat() + 3.dp.toPx(), anchor.y.toFloat() - 6.sp.toPx(), 110.dp.toPx(), SchematicPalette.ink)
         }
     }
 }
