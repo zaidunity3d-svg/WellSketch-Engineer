@@ -11,6 +11,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -29,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import com.wellsketch.engineer.core.schematic.ArtBounds
 import com.wellsketch.engineer.core.schematic.CalloutKind
 import com.wellsketch.engineer.core.schematic.CalloutLayout
+import com.wellsketch.engineer.core.schematic.ScaleBar
+import com.wellsketch.engineer.core.schematic.ScaleBars
 import com.wellsketch.engineer.core.schematic.SchematicScene
 import com.wellsketch.engineer.core.schematic.SurfaceArtwork
 import com.wellsketch.engineer.core.schematic.SurfaceBlock
@@ -39,14 +45,16 @@ import kotlin.math.min
  * Large surface view of one operating state: wellhead in the cellar, drilling BOP under the
  * rig floor, or the Christmas Tree with the CT pressure-control stack and injector, all on
  * the well centerline, with labelled callouts. Elevations come from the scene layout (entered
- * data); widths and detail parts are drawing sizes only. No animation: the picture is a pure
- * function of [scene].
+ * data); widths and detail parts are drawing sizes only. Everything is drawn at one common
+ * scale (wellhead, BOP stack, tree and rig floor stay in proportion), shown by the scale bar;
+ * [lengthInFeet] selects its unit. No animation: the picture is a pure function of [scene].
  */
 @Composable
 fun SurfaceDetailCanvas(
     scene: SchematicScene,
     modifier: Modifier = Modifier,
     selectedId: String? = null,
+    lengthInFeet: Boolean = false,
     onSurfaceBlockSelected: (SurfaceBlock) -> Unit = {},
 ) {
     val density = LocalDensity.current
@@ -96,7 +104,7 @@ fun SurfaceDetailCanvas(
             art.callouts, { t.x(it).toDouble() }, { t.y(it).toDouble() },
             rightColumnX = l.rightColumnX.toDouble(),
             leftColumnX = if (leftColumn) l.leftColumnX.toDouble() else null,
-            top = 4.dp.toPx().toDouble(), bottom = (size.height - 30.dp.toPx()).toDouble(),
+            top = 4.dp.toPx().toDouble(), bottom = (size.height - 48.dp.toPx()).toDouble(),
             lineHeight = lineHeight.toDouble(),
         )
         drawCallouts(textMeasurer, placed, 11.sp, lineHeight, l.labelWidth)
@@ -109,6 +117,9 @@ fun SurfaceDetailCanvas(
             constraints = Constraints(maxWidth = max(1, (size.width - 16.dp.toPx()).toInt())),
         )
         drawText(note, topLeft = Offset(8.dp.toPx(), size.height - note.size.height - 4.dp.toPx()))
+        ScaleBars.choose(t.scale, min(size.width * 0.32f, 150.dp.toPx()).toDouble(), lengthInFeet)?.let { bar ->
+            drawScaleBar(bar, t.scale, textMeasurer, Offset(10.dp.toPx(), size.height - note.size.height - 12.dp.toPx()))
+        }
         val gl = textMeasurer.measure(AnnotatedString("GL"), style = TextStyle(fontSize = 10.sp, color = SchematicPalette.paper))
         drawText(gl, topLeft = Offset(4.dp.toPx(), groundY + 2.dp.toPx()))
     }
@@ -128,12 +139,14 @@ private fun detailLayout(b: ArtBounds, size: IntSize, density: Density, leftLabe
     val columns = if (leftLabels) 2 else 1
     val availW = max(1f, size.width - 2 * margin - columns * (labelWidth + gap))
     val topRoom = 18.dp.toPx() // labels of remote units sit above them
-    val availH = max(1f, size.height - 2 * margin - topRoom - 26.dp.toPx())
+    val availH = max(1f, size.height - 2 * margin - topRoom - 46.dp.toPx()) // note + scale bar below
     val soilBelow = 0.3
     val scale = min(availW / b.width, availH / (b.height + soilBelow)).toDouble()
     val drawingLeft = margin + if (leftLabels) labelWidth + gap else 0f
     val axisX = drawingLeft + (availW - b.width * scale) / 2.0 - b.minX * scale
-    val groundY = margin + topRoom + b.maxY * scale
+    // Centre vertically when the drawing is width-limited, instead of leaving it at the top.
+    val spare = max(0.0, availH - (b.height + soilBelow) * scale)
+    val groundY = margin + topRoom + spare / 2 + b.maxY * scale
     val t = SurfaceTransform(axisX, groundY, scale)
     DetailLayout(
         transform = t,
@@ -141,4 +154,31 @@ private fun detailLayout(b: ArtBounds, size: IntSize, density: Density, leftLabe
         rightColumnX = t.x(b.maxX) + gap,
         labelWidth = labelWidth,
     )
+}
+
+/**
+ * Scale bar with alternating segments, its left end at [start] (baseline of the bar), and the
+ * length label after it. [pxPerMeter] is the drawing scale.
+ */
+private fun DrawScope.drawScaleBar(bar: ScaleBar, pxPerMeter: Double, textMeasurer: TextMeasurer, start: Offset) {
+    val length = (bar.meters * pxPerMeter).toFloat()
+    val height = 5.dp.toPx()
+    val segment = length / bar.divisions
+    val top = start.y - height
+    for (i in 0 until bar.divisions) {
+        drawRect(
+            color = if (i % 2 == 0) SchematicPalette.ink else SchematicPalette.paper,
+            topLeft = Offset(start.x + i * segment, top),
+            size = Size(segment, height),
+        )
+    }
+    drawRect(
+        color = SchematicPalette.ink, topLeft = Offset(start.x, top), size = Size(length, height),
+        style = Stroke(width = 1.dp.toPx()),
+    )
+    val label = textMeasurer.measure(
+        AnnotatedString("0 – ${bar.label}"),
+        style = TextStyle(fontSize = 10.sp, color = SchematicPalette.paper),
+    )
+    drawText(label, topLeft = Offset(start.x + length + 6.dp.toPx(), start.y - height / 2 - label.size.height / 2f))
 }

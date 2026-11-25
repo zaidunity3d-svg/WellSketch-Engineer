@@ -127,6 +127,7 @@ private fun CtContent(state: CtUiState, op: CtOperation, analysis: CtAnalysis, f
                 SurfaceDetailCanvas(
                     scene = analysis.scene,
                     selectedId = state.selectedBlock?.sourceId,
+                    lengthInFeet = f.depthUnit == "ft",
                     onSurfaceBlockSelected = { onEvent(CtEvent.SelectBlock(it)) },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
