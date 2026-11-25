@@ -34,7 +34,35 @@ class SurfaceModeTest {
         assertTrue(s.scene.surfaceBlocks.none { it.kind == SurfaceBlockKind.TREE_VALVE || it.kind == SurfaceBlockKind.INJECTOR })
         assertNotNull(s.scene.surfaceSite.rig)
         assertTrue(s.scene.elements.none { it.kind == ElementKind.TUBING_WALL || it.kind == ElementKind.COMPLETION_COMPONENT })
-        assertEquals(0.6, s.surfaceStackup!!.clearanceUnderRotaryBeams!!.meters, 1e-9)
+        // BOP on the casing spool (tubing head spool not installed yet): 7.6 − (−0.6 + 7.0) m
+        assertEquals(1.2, s.surfaceStackup!!.clearanceUnderRotaryBeams!!.meters, 1e-9)
+        assertTrue(s.surfaceStackup!!.issues.any { it.code == "WELLHEAD_SECTIONS_NOT_INSTALLED" })
+        assertTrue(s.surfaceStackup!!.issues.none { it.code == "BOP_WELLHEAD_CONNECTION_MISMATCH" })
+    }
+
+    @Test
+    fun completionAndCtModesKeepTheWholeWellhead() {
+        for (mode in listOf(SurfaceMode.COMPLETION, SurfaceMode.COILED_TUBING)) {
+            val s = session.snapshot(well, CompletionState.CURRENT, null, mode, ctRigUp)
+            assertEquals(3, s.scene.surfaceBlocks.count { it.kind == SurfaceBlockKind.WELLHEAD }, mode.name)
+            assertTrue(s.surfaceStackup!!.installedWellhead!!.notInstalled.isEmpty(), mode.name)
+        }
+    }
+
+    @Test
+    fun nippleUpSectionEditIsValidatedAndChangesTheDrillingView() {
+        val ths = well.wellhead!!.sections.first()
+        val applied = assertIs<EditOutcome.Applied>(WellEdits.setBopNippleUpSection(well, ths.id))
+        assertEquals(ths.id, applied.well.drillingRigUp!!.nippledUpOnSectionId)
+        val s = session.snapshot(applied.well, CompletionState.CURRENT, null, SurfaceMode.DRILLING, ctRigUp)
+        assertEquals(3, s.scene.surfaceBlocks.count { it.kind == SurfaceBlockKind.WELLHEAD })
+        // demo BOP bottom does not match the tubing head spool top: reported, not hidden
+        assertTrue(s.surfaceStackup!!.issues.any { it.code == "BOP_WELLHEAD_CONNECTION_MISMATCH" })
+
+        assertIs<EditOutcome.Rejected>(WellEdits.setBopNippleUpSection(well, "nope"))
+        assertIs<EditOutcome.Rejected>(WellEdits.setBopNippleUpSection(well.copy(drillingRigUp = null), null))
+        val auto = assertIs<EditOutcome.Applied>(WellEdits.setBopNippleUpSection(applied.well, null))
+        assertNull(auto.well.drillingRigUp!!.nippledUpOnSectionId)
     }
 
     @Test

@@ -436,6 +436,30 @@ private fun LazyListScope.surfaceItems(
             LabeledValue("RKB to wellhead top", stackup.rkbToWellheadTop?.let(f::depth) ?: "Not calculated")
             when (snapshot.surfaceMode) {
                 SurfaceMode.DRILLING -> {
+                    val rigUp = well.drillingRigUp
+                    val sections = well.wellhead?.sections.orEmpty()
+                    if (rigUp != null && sections.size > 1) {
+                        // Which section the BOP sits on decides which sections are installed yet.
+                        Text("BOP nippled up on", style = MaterialTheme.typography.labelMedium)
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(
+                                selected = rigUp.nippledUpOnSectionId == null,
+                                onClick = { onEvent(WellDesignEvent.Edit { w -> WellEdits.setBopNippleUpSection(w, null) }) },
+                                label = { Text("Auto") },
+                            )
+                            sections.forEach { s ->
+                                FilterChip(
+                                    selected = rigUp.nippledUpOnSectionId == s.id,
+                                    onClick = { onEvent(WellDesignEvent.Edit { w -> WellEdits.setBopNippleUpSection(w, s.id) }) },
+                                    label = { Text(s.name) },
+                                )
+                            }
+                        }
+                    }
+                    stackup.installedWellhead?.let { iw ->
+                        iw.top?.let { LabeledValue("BOP sits on", "${it.name} – ${iw.basis.label}") }
+                        if (iw.notInstalled.isNotEmpty()) LabeledValue("Not installed yet", iw.notInstalled.joinToString { it.name })
+                    }
                     LabeledValue("Drilling stack top", elevation(stackup.drillingStackTop))
                     LabeledValue("Drill floor", elevation(stackup.drillFloor))
                     LabeledValue("Clearance under rotary beams", stackup.clearanceUnderRotaryBeams?.let(f::depth) ?: "Not calculated")

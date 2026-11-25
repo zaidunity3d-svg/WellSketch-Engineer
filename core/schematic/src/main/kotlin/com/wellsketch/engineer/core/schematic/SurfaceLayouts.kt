@@ -1,6 +1,7 @@
 package com.wellsketch.engineer.core.schematic
 
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
+import com.wellsketch.engineer.core.engineering.surface.WellheadInstallation
 import com.wellsketch.engineer.core.model.ct.CtRigUp
 import com.wellsketch.engineer.core.model.ct.CtSurfaceUnit
 import com.wellsketch.engineer.core.model.surface.Cellar
@@ -197,7 +198,9 @@ object SurfaceLayouts {
     // ---------------------------------------------------------------------------------
 
     private fun wellheadBlocks(inputs: SurfaceInputs, tree: ChristmasTree?, state: OperatingState): List<SurfaceBlock> {
+        // Only the sections on the well in this state (same rule as the stack-up calculator).
         val wellhead = inputs.wellhead?.takeIf { it.sections.isNotEmpty() }
+            ?.let { it.copy(sections = WellheadInstallation.installed(it, state).sections) }
         if (wellhead == null) {
             // No wellhead definition: one placeholder block. A recorded top above GL keeps the
             // previous behaviour (block from GL to that top); otherwise a placeholder height is
