@@ -3,6 +3,7 @@ package com.wellsketch.engineer.core.model.ct
 import com.wellsketch.engineer.core.model.datum.DepthReference
 import com.wellsketch.engineer.core.model.provenance.DataProvenance
 import com.wellsketch.engineer.core.model.surface.CtPressureControlStack
+import com.wellsketch.engineer.core.model.units.FlowRate
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.Pressure
 import kotlinx.serialization.Serializable
@@ -141,6 +142,8 @@ data class CtOperation(
     /** Maximum expected wellhead pressure for rating checks; null if not yet specified. */
     val maxExpectedWellheadPressure: Pressure? = null,
     val provenance: DataProvenance,
+    /** Planned pump rate through the CT, for volume/time calculations; null if not specified. */
+    val pumpRate: FlowRate? = null,
 ) {
     init {
         require(depthReference !is DepthReference.MeanSeaLevel) { "CT depth cannot be referenced to MSL." }

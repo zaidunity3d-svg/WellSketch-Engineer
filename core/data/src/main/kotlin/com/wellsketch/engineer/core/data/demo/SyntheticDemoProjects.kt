@@ -50,6 +50,7 @@ import com.wellsketch.engineer.core.model.trajectory.DirectionalSurvey
 import com.wellsketch.engineer.core.model.trajectory.SurveyKind
 import com.wellsketch.engineer.core.model.trajectory.TrajectoryType
 import com.wellsketch.engineer.core.model.units.Angle
+import com.wellsketch.engineer.core.model.units.FlowRate
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.Pressure
 import com.wellsketch.engineer.core.model.well.CasingRole
@@ -592,6 +593,7 @@ object SyntheticDemoProjects {
             ),
             maxExpectedWellheadPressure = Pressure.psi(2000.0),
             provenance = synthetic,
+            pumpRate = FlowRate.barrelsPerMinute(1.5),
         )
     }
 

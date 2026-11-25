@@ -105,7 +105,7 @@ Dependency direction: `feature → domain → core:schematic → core:engineerin
 - Compose UI: home screen with project selector and unit system, Well Design (live editable sketch, responsive phone/tablet layout, right-side data panel, tap-to-select detail card), CT Calculations (depth reference per operation, depth field/slider/step buttons, full/compact surface view, placement/flow path/restrictions/stack/BHA panels), Well Calculations list, Equipment Library with provenance.
 
 **Placeholders**
-- Well Calculations and CT calculations: specification catalog only; no formulas.
+- CT forces, reach and pumping pressures: not implemented (need a reviewed model).
 - Equipment Library: synthetic placeholder entries only; no real catalog data.
 - Component breakdown views: not implemented; will use owner-approved reference images only.
 - Detailed final well illustration: not implemented (separate from the live sketch).
@@ -127,6 +127,28 @@ The sketch shows one surface configuration per operating state, always on the we
 - **Drawing.** `SurfaceArtwork` turns the layout into renderer-agnostic vector primitives (flanges with studs and nuts, side outlets with valves, gauges and plugs, front-facing handwheels, hydraulic actuators, ram operators, rig substructure, cellar). Widths and fittings are drawing sizes only. Below GL, a near-surface strip uses the surface scale (piecewise vertical mapping applied to path, column and surface alike, so GL stays the column top), separated from the well scale by a break line. A **Surface detail** view shows the same artwork full-size with callouts.
 - Reference images supplied by the owner were used for visual guidance only, not for dimensions, ratings or manufacturer data. All demo surface equipment is synthetic.
 
+## Calculations v1 (implemented, pending owner validation)
+
+All calculations are pure Kotlin, versioned (`VERSION = "1.0.0"`) and unit-tested; the UI only displays their results.
+
+| Calculation | Where | Basis |
+|---|---|---|
+| Tubular capacity, annular capacity, open/closed-end displacement, wall | `core/engineering/volumes/TubularGeometry` | Exact A = π/4 · D² on the stated diameters |
+| Flow-path volume, tubing inside / below EOT, tubing × casing annulus to the packer, volume between two depths | `domain/wellcalc/WellVolumeCalculator` | Split at every string top/shoe, hole section, tubing hanger/EOT and component; stops at full-bore plugs |
+| Hydrostatic pressure (stacked columns + surface pressure), gradient, equivalent density | `domain/wellcalc/HydrostaticCalculator` | P = P_s + Σ ρ·g·ΔTVD, g = 9.80665 m/s², ΔTVD from the minimum-curvature trajectory (never MD) |
+| Cement slurry (annulus cased/open with excess, shoe track, optional rathole) and displacement | `domain/wellcalc/CementVolumeCalculator` | Outer boundary = previous casing ID or bit size; displacement to the float collar |
+| CT internal volume, steel and BHA displacement, CT annulus to the nose, time to nozzle, bottoms-up, annular velocities | `domain/ct/CtVolumeCalculator` | Conduit from the CT flow path (tubing by default); CT laid out from the BHA top upward per section |
+
+**Verification**
+- Expected test values computed independently (exact unit definitions, analytic arc geometry for the S-profile TVD).
+- Cross-checked against standard oilfield relations: capacity = ID²/1029.4 bbl/ft, 1 ppg = 12/231 psi/ft (the "0.052" factor).
+- Cross-checked against a second implementation: the owner's v0.9 prototype functions (`volume()`, `cementVolume()`) on its fictional template A agree to 1e-9 m³ (`LegacyCrossCheckTest`).
+- Invariants: segments contiguous and summing to the total; bore + steel + annulus = outer bore; pressure constant along a horizontal lateral; inside-tubing + below-tubing = flow path.
+
+**Not included (stated in the app):** couplings/upsets, component bores, washout beyond bit size (no caliper yet), wellhead/tree bore and surface lines, ECD/temperature/gas effects, CT forces and reach.
+
+**Unit systems:** Oilfield (ft, in, psi, bbl, ppg), Metric (m, mm, bar, m³, kg/m³) and Field metric (m, in, psi, bbl, SG).
+
 **Needs engineering validation by the owner**
 - Minimum curvature implementation and the straight projection below the last survey station.
 - Provisional CT stack rules: stripper on top, at least one BOP, BHA must pass every component except the stripper, tree cap removed for rig-up.
@@ -136,7 +158,7 @@ The sketch shows one surface configuration per operating state, always on the we
 - Surface rules: wellhead base assumed on the cellar floor when not entered; drill floor drawn at RKB when the RKB-to-floor distance is missing; CT ram cavity count drawn from the BOP height.
 
 **Remaining work (next milestones)**
-- Specifications and tests for capacities, displacements, hydrostatics, cementing and CT pumping/forces.
+- CT forces/reach and friction-pressure models (after specification review); caliper-based open-hole volumes; tapered casing strings.
 - Validated tubular/equipment datasets with catalog provenance and import tooling.
 - Full editors (add/remove strings, sections, components, surveys, survey import), tapered strings, caliper data, offshore datums (water depth, mudline).
 - Detailed component views, final well illustration.

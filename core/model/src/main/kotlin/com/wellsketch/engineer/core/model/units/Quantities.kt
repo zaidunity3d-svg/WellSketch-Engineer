@@ -131,3 +131,65 @@ value class Angle(val degrees: Double) : Comparable<Angle> {
         fun radians(value: Double) = Angle(value * 180.0 / PI)
     }
 }
+
+/** Volume per unit length (capacity or displacement of a tubular or annulus). Stored in m³/m. */
+@Serializable
+@JvmInline
+value class VolumePerLength(val cubicMetersPerMeter: Double) : Comparable<VolumePerLength> {
+    val barrelsPerMeter: Double get() = cubicMetersPerMeter / UnitDefinitions.CUBIC_METERS_PER_US_BARREL
+    val barrelsPerFoot: Double get() = barrelsPerMeter * UnitDefinitions.METERS_PER_FOOT
+    val litersPerMeter: Double get() = cubicMetersPerMeter * 1000.0
+    val usGallonsPerFoot: Double
+        get() = cubicMetersPerMeter / UnitDefinitions.CUBIC_METERS_PER_US_GALLON * UnitDefinitions.METERS_PER_FOOT
+
+    operator fun plus(other: VolumePerLength) = VolumePerLength(cubicMetersPerMeter + other.cubicMetersPerMeter)
+    operator fun minus(other: VolumePerLength) = VolumePerLength(cubicMetersPerMeter - other.cubicMetersPerMeter)
+
+    /** Volume over [length]. */
+    operator fun times(length: Length): Volume = Volume(cubicMetersPerMeter * length.meters)
+    override operator fun compareTo(other: VolumePerLength): Int = cubicMetersPerMeter.compareTo(other.cubicMetersPerMeter)
+
+    companion object {
+        val ZERO = VolumePerLength(0.0)
+        fun cubicMetersPerMeter(value: Double) = VolumePerLength(value)
+        fun barrelsPerFoot(value: Double) =
+            VolumePerLength(value * UnitDefinitions.CUBIC_METERS_PER_US_BARREL / UnitDefinitions.METERS_PER_FOOT)
+        fun barrelsPerMeter(value: Double) = VolumePerLength(value * UnitDefinitions.CUBIC_METERS_PER_US_BARREL)
+    }
+}
+
+/** Volumetric flow rate (pump rate). Stored in m³/s. */
+@Serializable
+@JvmInline
+value class FlowRate(val cubicMetersPerSecond: Double) : Comparable<FlowRate> {
+    val barrelsPerMinute: Double get() = cubicMetersPerSecond * 60.0 / UnitDefinitions.CUBIC_METERS_PER_US_BARREL
+    val cubicMetersPerMinute: Double get() = cubicMetersPerSecond * 60.0
+    val litersPerMinute: Double get() = cubicMetersPerSecond * 60_000.0
+    override operator fun compareTo(other: FlowRate): Int = cubicMetersPerSecond.compareTo(other.cubicMetersPerSecond)
+
+    companion object {
+        val ZERO = FlowRate(0.0)
+        fun barrelsPerMinute(value: Double) = FlowRate(value * UnitDefinitions.CUBIC_METERS_PER_US_BARREL / 60.0)
+        fun cubicMetersPerMinute(value: Double) = FlowRate(value / 60.0)
+        fun litersPerMinute(value: Double) = FlowRate(value / 60_000.0)
+    }
+}
+
+/** Pressure gradient (e.g. hydrostatic gradient of a fluid). Stored in Pa/m. */
+@Serializable
+@JvmInline
+value class PressureGradient(val pascalsPerMeter: Double) : Comparable<PressureGradient> {
+    val psiPerFoot: Double get() = pascalsPerMeter * UnitDefinitions.METERS_PER_FOOT / UnitDefinitions.PASCALS_PER_PSI
+    val psiPerMeter: Double get() = pascalsPerMeter / UnitDefinitions.PASCALS_PER_PSI
+    val kilopascalsPerMeter: Double get() = pascalsPerMeter / 1000.0
+    val barPerMeter: Double get() = pascalsPerMeter / UnitDefinitions.PASCALS_PER_BAR
+
+    /** Pressure change over a vertical distance [height]. */
+    operator fun times(height: Length): Pressure = Pressure(pascalsPerMeter * height.meters)
+    override operator fun compareTo(other: PressureGradient): Int = pascalsPerMeter.compareTo(other.pascalsPerMeter)
+
+    companion object {
+        fun pascalsPerMeter(value: Double) = PressureGradient(value)
+        fun psiPerFoot(value: Double) = PressureGradient(value * UnitDefinitions.PASCALS_PER_PSI / UnitDefinitions.METERS_PER_FOOT)
+    }
+}

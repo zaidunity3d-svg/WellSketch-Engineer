@@ -1,8 +1,9 @@
 package com.wellsketch.engineer.domain.ct
 
 /**
- * CT calculations planned for the CT module. None are implemented: each needs an approved
- * specification (formula, references, units, validity range and test cases) first.
+ * CT calculations of the CT module. Volumes, displacement and pumping times are implemented
+ * in [CtVolumeCalculator] (pending owner validation); hydrostatics use the Well
+ * Calculations module. Forces and reach are not implemented: they need a reviewed model.
  */
 object CtCalculationCatalog {
     data class PlannedCalculation(val id: String, val title: String, val description: String)
