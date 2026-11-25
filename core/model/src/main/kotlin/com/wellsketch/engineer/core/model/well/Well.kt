@@ -3,7 +3,10 @@ package com.wellsketch.engineer.core.model.well
 import com.wellsketch.engineer.core.model.datum.WellDatums
 import com.wellsketch.engineer.core.model.geology.FormationTop
 import com.wellsketch.engineer.core.model.provenance.DataProvenance
+import com.wellsketch.engineer.core.model.surface.Cellar
 import com.wellsketch.engineer.core.model.surface.ChristmasTree
+import com.wellsketch.engineer.core.model.surface.DrillingRigUp
+import com.wellsketch.engineer.core.model.surface.Wellhead
 import com.wellsketch.engineer.core.model.trajectory.DirectionalSurvey
 import com.wellsketch.engineer.core.model.trajectory.SurveyKind
 import com.wellsketch.engineer.core.model.trajectory.TrajectoryType
@@ -36,6 +39,12 @@ data class Well(
     /** Christmas Tree currently installed, if the well is completed. */
     val christmasTree: ChristmasTree? = null,
     val provenance: DataProvenance,
+    /** Spool-type wellhead (casing head housing, casing spools, tubing head), if defined. */
+    val wellhead: Wellhead? = null,
+    /** Concrete cellar pit around the wellhead, if the location has one. */
+    val cellar: Cellar? = null,
+    /** Rig and drilling BOP stack used to show the drilling operating state, if defined. */
+    val drillingRigUp: DrillingRigUp? = null,
 ) {
     /**
      * The survey that drives trajectory geometry: the explicitly selected one, otherwise

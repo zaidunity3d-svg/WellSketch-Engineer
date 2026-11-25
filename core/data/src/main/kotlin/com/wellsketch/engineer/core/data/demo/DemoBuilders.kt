@@ -8,6 +8,7 @@ import com.wellsketch.engineer.core.model.provenance.DataProvenance
 import com.wellsketch.engineer.core.model.surface.EndConnection
 import com.wellsketch.engineer.core.model.surface.StackComponent
 import com.wellsketch.engineer.core.model.surface.StackComponentType
+import com.wellsketch.engineer.core.model.surface.ValveOperator
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.Pressure
 import com.wellsketch.engineer.core.model.well.CasingRole
@@ -102,6 +103,7 @@ internal object Demo {
         top: String,
         bottom: String,
         heightM: Double?,
+        operator: ValveOperator? = null,
     ) = StackComponent(
         id = id,
         type = type,
@@ -112,5 +114,6 @@ internal object Demo {
         bottomConnection = EndConnection(bottom),
         height = heightM?.let(Length::meters),
         provenance = synthetic,
+        operator = operator,
     )
 }

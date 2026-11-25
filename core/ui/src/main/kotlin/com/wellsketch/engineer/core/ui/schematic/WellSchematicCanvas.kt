@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -38,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wellsketch.engineer.core.engineering.trajectory.TrajectorySource
 import com.wellsketch.engineer.core.model.units.Length
+import com.wellsketch.engineer.core.schematic.CalloutKind
+import com.wellsketch.engineer.core.schematic.CalloutLayout
 import com.wellsketch.engineer.core.schematic.ElementKind
 import com.wellsketch.engineer.core.schematic.FormationBand
 import com.wellsketch.engineer.core.schematic.MarkerKind
@@ -46,8 +47,8 @@ import com.wellsketch.engineer.core.schematic.SchematicElement
 import com.wellsketch.engineer.core.schematic.SchematicHitTester
 import com.wellsketch.engineer.core.schematic.SchematicProjection
 import com.wellsketch.engineer.core.schematic.SchematicScene
+import com.wellsketch.engineer.core.schematic.SurfaceArtwork
 import com.wellsketch.engineer.core.schematic.SurfaceBlock
-import com.wellsketch.engineer.core.schematic.SurfaceBlockKind
 import com.wellsketch.engineer.core.ui.format.UnitFormatter
 import kotlin.math.ceil
 import kotlin.math.max
@@ -56,7 +57,9 @@ import kotlin.math.min
 /**
  * Live well schematic: full longitudinal half-cut of the well along its trajectory, with
  * the stratigraphic column on the left sharing the well's vertical (TVD below GL) scale,
- * and surface equipment above ground level.
+ * and surface equipment on the well centerline. Equipment below GL (wellhead in the
+ * cellar) is drawn in a near-surface strip at the surface scale, separated from the well
+ * scale by a break line.
  *
  * The drawing is a pure function of [scene]: there is no animation, so geometry and CT/BHA
  * positions change instantly when the scene changes.
@@ -75,7 +78,7 @@ fun WellSchematicCanvas(
     val density = LocalDensity.current
     val textMeasurer = rememberTextMeasurer()
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    val hasSurface = scene.surfaceBlocks.isNotEmpty()
+    val hasSurface = scene.hasSurface
     val config = remember(density, surfaceBandHeight, columnWidth, hasSurface) {
         with(density) {
             ProjectionConfig(
@@ -97,6 +100,9 @@ fun WellSchematicCanvas(
     }
     val minWallPx = with(density) { MIN_WALL_DP.dp.toPx().toDouble() }
     val shapes = remember(projection, minWallPx) { projection?.let { buildShapes(it, minWallPx) }.orEmpty() }
+    val artwork = remember(projection) {
+        projection?.takeIf { it.surfaceScale > 0.0 }?.let { SurfaceArtwork.build(it.scene, it.surfaceScale) }
+    }
     val onElement by rememberUpdatedState(onElementSelected)
     val onBlock by rememberUpdatedState(onSurfaceBlockSelected)
 
@@ -107,12 +113,23 @@ fun WellSchematicCanvas(
             .pointerInput(projection) {
                 detectTapGestures { offset ->
                     val p = projection ?: return@detectTapGestures
-                    val block = p.scene.surfaceBlocks.lastOrNull { b ->
+                    fun tapped(b: SurfaceBlock): Boolean {
                         val r = p.surfaceRect(b)
-                        offset.x >= r[0] && offset.x <= r[2] && offset.y >= r[1] && offset.y <= r[3]
+                        return offset.x >= r[0] && offset.x <= r[2] && offset.y >= r[1] && offset.y <= r[3]
+                    }
+                    val block = if (p.surfaceScale > 0.0) {
+                        (p.scene.surfaceBlocks + p.scene.surfaceSite.sideBlocks).lastOrNull { tapped(it) }
+                            ?: p.scene.surfaceSite.structureBlocks.firstOrNull { tapped(it) }
+                    } else {
+                        null
                     }
                     if (block != null) {
                         onBlock(block)
+                        return@detectTapGestures
+                    }
+                    // the near-surface strip shows surface detail only, not well elements
+                    if (offset.y < p.wellTopY) {
+                        onElement(null)
                         return@detectTapGestures
                     }
                     val located = p.locate(offset.x.toDouble(), offset.y.toDouble())
@@ -129,11 +146,15 @@ fun WellSchematicCanvas(
         val p = projection ?: return@Canvas
         drawFormations(p, textMeasurer, formatter)
         drawDatums(p, textMeasurer)
-        clipRect(left = p.columnRight.toFloat(), top = p.groundY.toFloat(), right = size.width, bottom = size.height) {
+        if (p.nearSurfacePx > 0.0) {
+            drawGroundSection(p.columnRight.toFloat(), size.width, p.groundY.toFloat(), p.wellTopY.toFloat())
+        }
+        clipRect(left = p.columnRight.toFloat(), top = p.wellTopY.toFloat(), right = size.width, bottom = size.height) {
             shapes.forEach { drawElement(p, it, it.element.id == selectedId) }
             drawMarkers(p, textMeasurer, formatter)
         }
-        drawSurface(p, textMeasurer, selectedId)
+        if (p.nearSurfacePx > 0.0) drawScaleBreak(p.columnRight.toFloat(), size.width, p.wellTopY.toFloat())
+        drawSurface(p, artwork, textMeasurer, selectedId)
         if (p.scene.trajectorySource == TrajectorySource.ASSUMED_VERTICAL) {
             label(textMeasurer, "No survey: vertical path assumed", p.wellLeft.toFloat(), size.height - 14.dp.toPx(), 220.dp.toPx(), Color(0xFF8A5A00))
         }
@@ -375,67 +396,29 @@ private fun DrawScope.drawDatums(p: SchematicProjection, tm: TextMeasurer) {
     }
 }
 
-private fun DrawScope.drawSurface(p: SchematicProjection, tm: TextMeasurer, selectedId: String?) {
-    if (p.surfaceScale <= 0) return
-    val blocks = p.scene.surfaceBlocks
-    val hasCt = p.scene.elements.any { it.kind == ElementKind.CT_WALL }
-    val axisX = p.axisXAtSurface.toFloat()
-    val injector = blocks.firstOrNull { it.kind == SurfaceBlockKind.INJECTOR }
-    for (b in blocks) {
-        val r = p.surfaceRect(b)
-        val left = r[0].toFloat()
-        val top = r[1].toFloat()
-        val right = r[2].toFloat()
-        val bottom = r[3].toFloat()
-        val w = right - left
-        val h = bottom - top
-        if (w <= 0f || h <= 0f) continue
-        val color = SchematicPalette.surfaceColor(b.kind)
-        when (b.kind) {
-            SurfaceBlockKind.REEL -> {
-                val c = Offset((left + right) / 2, (top + bottom) / 2)
-                val radius = min(w, h) / 2
-                drawCircle(Brush.radialGradient(listOf(color.lighten(0.3f), color.darken(0.6f)), center = c, radius = radius), radius, c)
-                drawCircle(SchematicPalette.ctLine, radius * 0.55f, c, style = Stroke(radius * 0.35f))
-                drawCircle(color.darken(0.4f), radius * 0.18f, c)
-            }
-            SurfaceBlockKind.GOOSENECK -> {
-                drawArc(color, 180f, 180f, false, topLeft = Offset(left, top), size = Size(w, h * 2), style = Stroke(4.dp.toPx()))
-            }
-            else -> {
-                val brush = Brush.horizontalGradient(listOf(color.darken(0.55f), color.lighten(0.35f), color, color.darken(0.6f)), startX = left, endX = right)
-                drawRoundRect(brush, topLeft = Offset(left, top), size = Size(w, h), cornerRadius = CornerRadius(2.dp.toPx()))
-            }
-        }
-        val outline = if (b.sourceId == selectedId) SchematicPalette.selection else SchematicPalette.ink.copy(alpha = 0.7f)
-        drawRect(
-            outline, topLeft = Offset(left, top), size = Size(w, h),
-            style = Stroke(
-                width = if (b.sourceId == selectedId) 2.5.dp.toPx() else 0.8.dp.toPx(),
-                pathEffect = if (b.sizeIsSchematic) PathEffect.dashPathEffect(floatArrayOf(5f, 4f)) else null,
-            ),
-        )
-        if (b.centerOffset == 0.0 && h >= 9.sp.toPx()) {
-            label(tm, b.label, right + 4.dp.toPx(), top + (h - 11.sp.toPx()) / 2, 150.dp.toPx(), SchematicPalette.ink)
-        } else if (b.centerOffset != 0.0) {
-            label(tm, b.label, left, bottom + 1.dp.toPx(), max(w, 60.dp.toPx()), SchematicPalette.ink)
-        }
-    }
-    if (hasCt && injector != null) {
-        val r = p.surfaceRect(injector)
-        drawLine(SchematicPalette.ctLine, Offset(axisX, p.groundY.toFloat()), Offset(axisX, r[1].toFloat()), strokeWidth = 2.dp.toPx())
-        val reel = blocks.firstOrNull { it.kind == SurfaceBlockKind.REEL }
-        val goose = blocks.firstOrNull { it.kind == SurfaceBlockKind.GOOSENECK }
-        if (reel != null && goose != null) {
-            val rr = p.surfaceRect(reel)
-            val gr = p.surfaceRect(goose)
-            val path = Path().apply {
-                moveTo(axisX, gr[1].toFloat())
-                quadraticTo(((rr[0] + rr[2]) / 2).toFloat(), gr[1].toFloat(), ((rr[0] + rr[2]) / 2).toFloat(), rr[1].toFloat())
-            }
-            drawPath(path, SchematicPalette.ctLine, style = Stroke(2.dp.toPx()))
-        }
-    }
+private fun DrawScope.drawSurface(
+    p: SchematicProjection,
+    artwork: com.wellsketch.engineer.core.schematic.SurfaceArtworkResult?,
+    tm: TextMeasurer,
+    selectedId: String?,
+) {
+    if (artwork == null || p.surfaceScale <= 0) return
+    val t = SurfaceTransform(p.axisXAtSurface, p.groundY, p.surfaceScale)
+    drawSurfaceArtwork(artwork, t, selectedId)
+    // Labels for the axis stack and site structures in a column right of the equipment,
+    // when there is room; the surface detail view shows every label.
+    val bounds = artwork.bounds ?: return
+    val columnX = t.x(bounds.maxX) + 10.dp.toPx()
+    val maxWidth = size.width - columnX - 4.dp.toPx()
+    if (maxWidth < 56.dp.toPx()) return
+    val lineHeight = 11.sp.toPx()
+    val placed = CalloutLayout.place(
+        artwork.callouts, { t.x(it).toDouble() }, { t.y(it).toDouble() },
+        rightColumnX = columnX.toDouble(), leftColumnX = null,
+        top = 2.dp.toPx().toDouble(), bottom = p.wellTopY - 2.dp.toPx(),
+        lineHeight = lineHeight.toDouble(), kinds = setOf(CalloutKind.AXIS, CalloutKind.SITE),
+    )
+    drawCallouts(tm, placed, 9.sp, lineHeight, maxWidth)
 }
 
 private fun DrawScope.label(tm: TextMeasurer, text: String, x: Float, y: Float, maxWidth: Float, color: Color) {
@@ -450,6 +433,4 @@ private fun DrawScope.label(tm: TextMeasurer, text: String, x: Float, y: Float, 
     drawText(layout, topLeft = Offset(x, y))
 }
 
-private fun Color.darken(factor: Float) = Color(red * factor, green * factor, blue * factor, alpha)
-private fun Color.lighten(amount: Float) =
-    Color(red + (1f - red) * amount, green + (1f - green) * amount, blue + (1f - blue) * amount, alpha)
+

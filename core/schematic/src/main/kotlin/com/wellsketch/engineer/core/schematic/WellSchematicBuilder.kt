@@ -1,6 +1,7 @@
 package com.wellsketch.engineer.core.schematic
 
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
+import com.wellsketch.engineer.core.engineering.surface.SurfaceStackupCalculator
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue
 import com.wellsketch.engineer.core.engineering.validation.WellGeometryValidator
 import com.wellsketch.engineer.core.model.geology.Lithology
@@ -24,12 +25,18 @@ import kotlin.math.max
  */
 class WellSchematicBuilder(
     private val validator: WellGeometryValidator = WellGeometryValidator(),
+    private val stackupCalculator: SurfaceStackupCalculator = SurfaceStackupCalculator(),
 ) {
 
+    /**
+     * @param completionState completion to draw; null draws casing only (e.g. drilling state).
+     * @param operatingState surface configuration: drilling rig + BOP, tree, or tree + CT stack.
+     */
     fun build(
         well: Well,
         completionState: CompletionState?,
         operatingState: OperatingState = defaultOperatingState(well),
+        ctViewMode: CtSurfaceViewMode = CtSurfaceViewMode.COMPACT,
     ): SchematicScene {
         val ctx = WellGeometryContext(well)
         val completion = completionState?.let(well::completion)
@@ -45,6 +52,8 @@ class WellSchematicBuilder(
         completion?.let { addCompletion(ctx, resolver, it, elements, markers) }
 
         val issues = validator.validate(ctx, completion).toMutableList()
+        issues += stackupCalculator.calculate(well, operatingState).issues
+        val surface = SurfaceLayouts.layout(operatingState, ctViewMode, SurfaceInputs.of(well, ctx))
         if (completionState != null && completion == null) {
             issues += ValidationIssue(
                 ValidationIssue.Severity.INFO, "COMPLETION_STATE_MISSING",
@@ -63,11 +72,12 @@ class WellSchematicBuilder(
                 mslRelativeToGl = -well.datums.groundLevelElevation.meters,
                 canonicalReferenceLabel = ctx.canonicalReference.shortLabel,
             ),
-            surfaceBlocks = SurfaceLayouts.forOperatingState(operatingState),
+            surfaceBlocks = surface.blocks,
             trajectorySource = ctx.trajectorySource,
             groundLevelMd = glMd,
             totalDepthMd = totalDepth,
             issues = issues,
+            surfaceSite = surface.site,
         )
     }
 

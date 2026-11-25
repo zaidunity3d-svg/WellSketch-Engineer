@@ -30,7 +30,11 @@ data class ProjectionConfig(
  * - Radii use a separate exaggerated [radialScale] so that nested strings stay legible.
  * - The stratigraphic column uses the same vertical mapping as the path, so formation
  *   boundaries line up with the well at the same TVD, and GL = 0 is the column top.
- * - Surface equipment uses its own [surfaceScale] inside the band above GL.
+ * - Surface equipment uses its own isotropic [surfaceScale] in the band above GL. When the
+ *   surface artwork reaches below GL (cellar, wellhead in the cellar, casing stubs), a
+ *   near-surface strip of [nearSurfacePx] is added below GL. Inside the strip, TVD is mapped
+ *   with the surface scale (piecewise-linear vertical mapping applied to everything: path,
+ *   column and surface), so GL stays a single line and boundaries stay aligned.
  */
 class SchematicProjection(
     val scene: SchematicScene,
@@ -52,38 +56,78 @@ class SchematicProjection(
 
     private val xRange = scene.maxX - scene.minX
     private val availableWidth = max(1.0, wellRight - wellLeft - 2 * radialPx)
-    private val availableHeight = max(1.0, bottom - groundY - radialPx)
 
-    /** Pixels per metre along the path (same horizontally and vertically). */
-    val pathScale: Double = min(
+    /** Extent of the surface artwork in metres (null when there is no surface equipment). */
+    val surfaceBounds: ArtBounds? = if (scene.hasSurface) SurfaceArtwork.bounds(scene) else null
+
+    private fun pathScaleFor(stripPx: Double): Double = min(
         if (xRange > 1e-6) availableWidth / xRange else Double.POSITIVE_INFINITY,
-        availableHeight / max(scene.maxTvdBelowGl, 1.0),
+        max(1.0, bottom - groundY - stripPx - radialPx) / max(scene.maxTvdBelowGl, 1.0),
     )
 
-    private val x0 = wellLeft + radialPx + (availableWidth - xRange * pathScale) / 2.0 - scene.minX * pathScale
+    private fun x0For(pathScale: Double) =
+        wellLeft + radialPx + (availableWidth - xRange * pathScale) / 2.0 - scene.minX * pathScale
+
+    /**
+     * Surface scale that fits the artwork above GL into the band height and its width into
+     * the full screen width (the band lies above GL, so it may extend over the column).
+     */
+    private fun surfaceScaleFor(axisX: Double): Double {
+        val b = surfaceBounds ?: return 0.0
+        if (b.maxY <= 0.0 && b.minY >= 0.0) return 0.0
+        var scale = if (b.maxY > 0.0) max(0.0, config.surfaceBandHeight - config.margin) / b.maxY else Double.POSITIVE_INFINITY
+        if (b.minX < 0) scale = min(scale, max(0.0, axisX - config.margin) / -b.minX)
+        if (b.maxX > 0) scale = min(scale, max(0.0, width - config.margin - axisX) / b.maxX)
+        // keep the near-surface strip within a third of the drawing height
+        if (b.minY < 0) scale = min(scale, max(0.0, (bottom - groundY) / 3.0) / -b.minY)
+        return if (scale.isFinite()) scale else 0.0
+    }
+
+    /** Height in pixels of the near-surface strip below GL (0 when nothing is below GL). */
+    val nearSurfacePx: Double
+
+    /** Pixels per metre along the path (same horizontally and vertically). */
+    val pathScale: Double
+
+    private val x0: Double
+
+    /**
+     * Pixels per metre for surface equipment inside the band above GL and the near-surface
+     * strip below it.
+     */
+    val surfaceScale: Double
+
+    init {
+        val first = surfaceScaleFor(x0For(pathScaleFor(0.0)) + path.first().x * pathScaleFor(0.0))
+        val depth = max(0.0, -(surfaceBounds?.minY ?: 0.0))
+        nearSurfacePx = depth * first
+        pathScale = pathScaleFor(nearSurfacePx)
+        x0 = x0For(pathScale)
+        surfaceScale = min(first, surfaceScaleFor(x0 + path.first().x * pathScale))
+    }
+
+    /** TVD below GL drawn at the surface scale inside the near-surface strip. */
+    val nearSurfaceDepth: Double = if (surfaceScale > 0.0) nearSurfacePx / surfaceScale else 0.0
+
+    /** Screen y where the well schematic (at path scale) starts, below the near-surface strip. */
+    val wellTopY: Double get() = groundY + nearSurfacePx
 
     val columnLeft: Double = config.margin
     val columnRight: Double = config.columnWidth
 
-    /**
-     * Pixels per metre for surface equipment inside the band above GL. Limited so that the
-     * tallest stack fits the band height and the widest spread fits the full screen width
-     * (the band lies above GL, so it may extend over the formation column).
-     */
-    val surfaceScale: Double = run {
-        if (scene.surfaceBlocks.isEmpty() || scene.surfaceHeight <= 0.0) return@run 0.0
-        val axisX = x0 + path.first().x * pathScale
-        var scale = max(0.0, config.surfaceBandHeight - config.margin) / scene.surfaceHeight
-        val leftExtent = scene.surfaceBlocks.maxOf { it.width / 2.0 - it.centerOffset }
-        val rightExtent = scene.surfaceBlocks.maxOf { it.centerOffset + it.width / 2.0 }
-        if (leftExtent > 0) scale = min(scale, max(0.0, axisX - config.margin) / leftExtent)
-        if (rightExtent > 0) scale = min(scale, max(0.0, width - config.margin - axisX) / rightExtent)
-        scale
+    fun map(x: Double, tvdBelowGl: Double) = ScreenPoint(x0 + x * pathScale, tvdToY(tvdBelowGl))
+
+    fun tvdToY(tvdBelowGl: Double): Double = when {
+        nearSurfacePx <= 0.0 || tvdBelowGl <= 0.0 -> groundY + tvdBelowGl * pathScale
+        tvdBelowGl <= nearSurfaceDepth -> groundY + tvdBelowGl * surfaceScale
+        else -> wellTopY + (tvdBelowGl - nearSurfaceDepth) * pathScale
     }
 
-    fun map(x: Double, tvdBelowGl: Double) = ScreenPoint(x0 + x * pathScale, groundY + tvdBelowGl * pathScale)
+    /** Screen x of an artwork x coordinate (metres from the axis at the surface). */
+    fun surfaceX(x: Double): Double = axisXAtSurface + x * surfaceScale
 
-    fun tvdToY(tvdBelowGl: Double): Double = groundY + tvdBelowGl * pathScale
+    /** Screen y of an artwork elevation (metres above GL; negative below GL). */
+    fun surfaceY(elevationAboveGl: Double): Double = groundY - elevationAboveGl * surfaceScale
 
     /** Screen x of the well axis at ground level. */
     val axisXAtSurface: Double get() = map(path.first().x, 0.0).x

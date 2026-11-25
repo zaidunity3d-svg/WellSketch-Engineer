@@ -96,4 +96,30 @@ object WellEdits {
         )
         return EditOutcome.Applied(well.copy(completions = well.completions.map { if (it.state == state) updated else it }))
     }
+
+    /** Sets the cellar depth below GL (positive downward); the cellar must already exist. */
+    fun setCellarDepth(well: Well, depthBelowGroundLevel: Length): EditOutcome {
+        val cellar = well.cellar ?: return EditOutcome.Rejected("No cellar defined")
+        if (depthBelowGroundLevel < Length.ZERO) return EditOutcome.Rejected("Cellar depth must not be negative")
+        return EditOutcome.Applied(well.copy(cellar = cellar.copy(depthBelowGroundLevel = depthBelowGroundLevel)))
+    }
+
+    /**
+     * Sets the elevation of the wellhead base relative to GL (negative = below GL, inside the
+     * cellar). A base below the cellar floor is accepted and reported by the stack-up check.
+     */
+    fun setWellheadBase(well: Well, baseRelativeToGroundLevel: Length): EditOutcome {
+        val wellhead = well.wellhead ?: return EditOutcome.Rejected("No wellhead defined")
+        return EditOutcome.Applied(well.copy(wellhead = wellhead.copy(baseRelativeToGroundLevel = baseRelativeToGroundLevel)))
+    }
+
+    /** Sets the data-sheet height of one wellhead section. */
+    fun setWellheadSectionHeight(well: Well, sectionId: String, height: Length): EditOutcome {
+        val wellhead = well.wellhead ?: return EditOutcome.Rejected("No wellhead defined")
+        if (wellhead.sections.none { it.id == sectionId }) return EditOutcome.Rejected("Unknown wellhead section")
+        if (height < Length.ZERO) return EditOutcome.Rejected("Section height must not be negative")
+        return EditOutcome.Applied(
+            well.copy(wellhead = wellhead.copy(sections = wellhead.sections.map { if (it.id == sectionId) it.copy(height = height) else it })),
+        )
+    }
 }

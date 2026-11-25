@@ -25,9 +25,26 @@ import com.wellsketch.engineer.core.model.datum.WellDatums
 import com.wellsketch.engineer.core.model.geology.Lithology
 import com.wellsketch.engineer.core.model.project.WellProject
 import com.wellsketch.engineer.core.model.provenance.DataProvenance
+import com.wellsketch.engineer.core.model.surface.Cellar
 import com.wellsketch.engineer.core.model.surface.ChristmasTree
 import com.wellsketch.engineer.core.model.surface.CtPressureControlStack
+import com.wellsketch.engineer.core.model.surface.DrillingBopComponent
+import com.wellsketch.engineer.core.model.surface.DrillingBopComponentType
+import com.wellsketch.engineer.core.model.surface.DrillingBopStack
+import com.wellsketch.engineer.core.model.surface.DrillingRig
+import com.wellsketch.engineer.core.model.surface.DrillingRigUp
+import com.wellsketch.engineer.core.model.surface.EndConnection
+import com.wellsketch.engineer.core.model.surface.OutletFitting
+import com.wellsketch.engineer.core.model.surface.OutletSide
+import com.wellsketch.engineer.core.model.surface.RamType
+import com.wellsketch.engineer.core.model.surface.SideOutlet
 import com.wellsketch.engineer.core.model.surface.StackComponentType
+import com.wellsketch.engineer.core.model.surface.TreeWingOutlet
+import com.wellsketch.engineer.core.model.surface.TreeWingRole
+import com.wellsketch.engineer.core.model.surface.ValveOperator
+import com.wellsketch.engineer.core.model.surface.Wellhead
+import com.wellsketch.engineer.core.model.surface.WellheadSection
+import com.wellsketch.engineer.core.model.surface.WellheadSectionType
 import com.wellsketch.engineer.core.model.trajectory.AzimuthReference
 import com.wellsketch.engineer.core.model.trajectory.DirectionalSurvey
 import com.wellsketch.engineer.core.model.trajectory.SurveyKind
@@ -74,6 +91,9 @@ object SyntheticDemoProjects {
     )
     private const val GL_MD = 9.0
 
+    /** Elevation of the wellhead top flange (tree landing) relative to GL in the demos. */
+    private const val TREE_LANDING_ABOVE_GL = 0.0
+
     // Synthetic tubular "specs" (round illustrative numbers, NOT catalog values).
     private val conductorSpec = spec(20.0, 19.0, SyntheticEquipmentCatalog.CONDUCTOR_20, "DEMO")
     private val surfaceSpec = spec(13.375, 12.4, SyntheticEquipmentCatalog.CASING_13_375, "DEMO")
@@ -81,6 +101,26 @@ object SyntheticDemoProjects {
     private val productionSpec = spec(7.0, 6.2, SyntheticEquipmentCatalog.CASING_7, "DEMO")
     private val linerSpec = spec(4.5, 3.9, SyntheticEquipmentCatalog.LINER_4_5, "DEMO")
     private val tubingSpec = spec(3.5, 2.9, SyntheticEquipmentCatalog.TUBING_3_5, "DEMO")
+
+    /**
+     * Upgrades a stored SYNTHETIC demo project created by an earlier app version (before
+     * wellhead, cellar and drilling rig-up data existed) with the current demo surface
+     * equipment. Everything else in the stored project, including user edits, is kept.
+     * Returns null when [stored] is not a demo project or is already up to date; real
+     * (non-synthetic) projects are never touched.
+     */
+    fun withCurrentSurfaceEquipment(stored: WellProject): WellProject? {
+        if (!stored.isSyntheticDemo || stored.well.wellhead != null) return null
+        val fresh = all().firstOrNull { it.id == stored.id } ?: return null
+        return stored.copy(
+            well = stored.well.copy(
+                wellhead = fresh.well.wellhead,
+                cellar = fresh.well.cellar,
+                drillingRigUp = fresh.well.drillingRigUp,
+                christmasTree = fresh.well.christmasTree,
+            ),
+        )
+    }
 
     fun all(nowEpochMillis: Long = 0L): List<WellProject> = listOf(
         vertical(nowEpochMillis),
@@ -132,6 +172,9 @@ object SyntheticDemoProjects {
             ),
             christmasTree = christmasTree(id),
             provenance = synthetic,
+            wellhead = wellhead(id),
+            cellar = cellar,
+            drillingRigUp = drillingRigUp(id),
         )
         return project(id, "Vertical producer", well, ctOperation(id, currentDepth = 2000.0), now)
     }
@@ -181,6 +224,9 @@ object SyntheticDemoProjects {
             ),
             christmasTree = christmasTree(id),
             provenance = synthetic,
+            wellhead = wellhead(id),
+            cellar = cellar,
+            drillingRigUp = drillingRigUp(id),
         )
         return project(id, "J-shaped (build and hold)", well, ctOperation(id, currentDepth = 2500.0), now)
     }
@@ -246,6 +292,9 @@ object SyntheticDemoProjects {
             ),
             christmasTree = christmasTree(id),
             provenance = synthetic,
+            wellhead = wellhead(id),
+            cellar = cellar,
+            drillingRigUp = drillingRigUp(id),
         )
         return project(id, "S-shaped (tubingless current state)", well, ctOperation(id, currentDepth = 2400.0), now)
     }
@@ -292,6 +341,9 @@ object SyntheticDemoProjects {
             ),
             christmasTree = christmasTree(id),
             provenance = synthetic,
+            wellhead = wellhead(id),
+            cellar = cellar,
+            drillingRigUp = drillingRigUp(id),
         )
         return project(id, "Horizontal with liner", well, ctOperation(id, currentDepth = 2200.0), now)
     }
@@ -357,20 +409,133 @@ object SyntheticDemoProjects {
         )
     }
 
-    /** Synthetic tree; top connection of the swab valve is where the CT adapter lands. */
+    /**
+     * Synthetic tree; top connection of the swab valve is where the CT adapter lands. It sits
+     * on the wellhead top flange at GL; without the cap the tree is 3.0 m tall.
+     */
     private fun christmasTree(id: String) = ChristmasTree(
         id = "$id-tree",
         name = "Christmas Tree (demo)",
         components = listOf(
             stackComponent("$id-t-cap", StackComponentType.TREE_CAP, "Tree cap (demo)", 3.0, 5000.0, "DEMO-CAP", "DEMO-TREE-TOP", 0.3),
-            stackComponent("$id-t-swab", StackComponentType.SWAB_VALVE, "Swab valve (demo)", 3.0, 5000.0, "DEMO-TREE-TOP", "DEMO-T1", 0.5),
-            stackComponent("$id-t-tee", StackComponentType.FLOW_TEE, "Flow tee (demo)", 3.0, 5000.0, "DEMO-T1", "DEMO-T2", 0.4),
-            stackComponent("$id-t-umv", StackComponentType.UPPER_MASTER_VALVE, "Upper master valve (demo)", 3.0, 5000.0, "DEMO-T2", "DEMO-T3", 0.5),
-            stackComponent("$id-t-lmv", StackComponentType.LOWER_MASTER_VALVE, "Lower master valve (demo)", 3.0, 5000.0, "DEMO-T3", "DEMO-T4", 0.5),
-            stackComponent("$id-t-tha", StackComponentType.TUBING_HEAD_ADAPTER, "Tubing head adapter (demo)", 3.0, 5000.0, "DEMO-T4", "DEMO-WELLHEAD", 0.3),
+            stackComponent("$id-t-swab", StackComponentType.SWAB_VALVE, "Swab valve (demo)", 3.0, 5000.0, "DEMO-TREE-TOP", "DEMO-T1", 0.6, ValveOperator.MANUAL),
+            stackComponent("$id-t-tee", StackComponentType.FLOW_TEE, "Flow cross (demo)", 3.0, 5000.0, "DEMO-T1", "DEMO-T2", 0.5),
+            stackComponent("$id-t-umv", StackComponentType.UPPER_MASTER_VALVE, "Upper master valve (demo)", 3.0, 5000.0, "DEMO-T2", "DEMO-T3", 0.7, ValveOperator.HYDRAULIC),
+            stackComponent("$id-t-lmv", StackComponentType.LOWER_MASTER_VALVE, "Lower master valve (demo)", 3.0, 5000.0, "DEMO-T3", "DEMO-T4", 0.7, ValveOperator.MANUAL),
+            stackComponent("$id-t-tha", StackComponentType.TUBING_HEAD_ADAPTER, "Tubing head adapter (demo)", 3.0, 5000.0, "DEMO-T4", "DEMO-WELLHEAD", 0.5),
         ),
-        wellheadTopAboveGroundLevel = Length.meters(0.8),
+        wellheadTopAboveGroundLevel = Length.meters(TREE_LANDING_ABOVE_GL),
         provenance = synthetic,
+        wingOutlets = listOf(
+            TreeWingOutlet(
+                id = "$id-wing-prod", side = OutletSide.RIGHT, role = TreeWingRole.PRODUCTION, branchComponentId = "$id-t-tee",
+                components = listOf(
+                    stackComponent("$id-t-pwv", StackComponentType.WING_VALVE, "Production wing valve (demo)", 2.0, 5000.0, "DEMO-W", "DEMO-W", 0.5, ValveOperator.MANUAL),
+                    stackComponent("$id-t-choke", StackComponentType.PRODUCTION_CHOKE, "Production choke (demo)", 2.0, 5000.0, "DEMO-W", "DEMO-W", 0.45),
+                ),
+                provenance = synthetic,
+            ),
+            TreeWingOutlet(
+                id = "$id-wing-kill", side = OutletSide.LEFT, role = TreeWingRole.KILL_INJECTION, branchComponentId = "$id-t-tee",
+                components = listOf(
+                    stackComponent("$id-t-kwv", StackComponentType.WING_VALVE, "Kill / injection wing valve (demo)", 2.0, 5000.0, "DEMO-W", "DEMO-W", 0.5, ValveOperator.MANUAL),
+                ),
+                provenance = synthetic,
+            ),
+        ),
+    )
+
+    // Synthetic cellar: 2.4 m deep, 2.4 m clear width.
+    private val cellar = Cellar(Length.meters(2.4), Length.meters(2.4), synthetic)
+
+    private fun annulusOutlets(prefix: String) = listOf(
+        SideOutlet("$prefix-l", OutletSide.LEFT, listOf(OutletFitting.BULL_PLUG), label = "Annulus outlet, plugged (demo)", provenance = synthetic),
+        SideOutlet(
+            "$prefix-r", OutletSide.RIGHT, listOf(OutletFitting.GATE_VALVE, OutletFitting.NEEDLE_VALVE_GAUGE),
+            label = "Annulus valve and gauge (demo)", provenance = synthetic,
+        ),
+    )
+
+    /**
+     * Synthetic three-section wellhead in the cellar. Base 2.1 m below GL (0.3 m above the
+     * cellar floor); section heights 0.75 + 0.75 + 0.6 m put the top flange at GL.
+     */
+    private fun wellhead(id: String) = Wellhead(
+        id = "$id-wellhead",
+        name = "Wellhead (demo)",
+        sections = listOf(
+            WellheadSection(
+                id = "$id-wh-ths", type = WellheadSectionType.TUBING_HEAD_SPOOL, name = "Tubing head spool (demo)",
+                topConnection = EndConnection("DEMO-WELLHEAD"), bottomConnection = EndConnection("DEMO-WH-2"),
+                ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(0.6),
+                sideOutlets = annulusOutlets("$id-wh-ths-o"), provenance = synthetic,
+            ),
+            WellheadSection(
+                id = "$id-wh-cs", type = WellheadSectionType.CASING_SPOOL, name = "Casing spool (demo)",
+                topConnection = EndConnection("DEMO-WH-2"), bottomConnection = EndConnection("DEMO-WH-1"),
+                ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(0.75), suspendedStringId = "$id-c4",
+                sideOutlets = annulusOutlets("$id-wh-cs-o"), provenance = synthetic,
+            ),
+            WellheadSection(
+                id = "$id-wh-chh", type = WellheadSectionType.CASING_HEAD_HOUSING, name = "Casing head housing (demo)",
+                topConnection = EndConnection("DEMO-WH-1"), bottomConnection = EndConnection("DEMO-SURFACE-CASING"),
+                ratedWorkingPressure = Pressure.psi(3000.0), height = Length.meters(0.75), suspendedStringId = "$id-c3",
+                sideOutlets = annulusOutlets("$id-wh-chh-o"), provenance = synthetic,
+            ),
+        ),
+        baseRelativeToGroundLevel = Length.meters(-2.1),
+        provenance = synthetic,
+    )
+
+    private fun bopComponent(
+        id: String, type: DrillingBopComponentType, name: String, ratingPsi: Double?, top: String, bottom: String,
+        heightM: Double, rams: List<RamType> = emptyList(), outlets: List<SideOutlet> = emptyList(),
+    ) = DrillingBopComponent(
+        id = id, type = type, name = name, bore = inch(13.625), ratedWorkingPressure = ratingPsi?.let(Pressure::psi),
+        topConnection = EndConnection(top), bottomConnection = EndConnection(bottom), height = Length.meters(heightM),
+        rams = rams, sideOutlets = outlets, provenance = synthetic,
+    )
+
+    /**
+     * Synthetic drilling rig-up: drill floor 0.5 m below RKB (8.5 m above GL), 7.6 m clear
+     * under the rotary beams; BOP stack 7.0 m tall on the wellhead top at GL.
+     */
+    private fun drillingRigUp(id: String) = DrillingRigUp(
+        rig = DrillingRig(
+            id = "$id-rig", name = "Drilling rig (demo)",
+            floorBelowRkb = Length.meters(0.5), clearHeightUnderRotaryBeams = Length.meters(7.6),
+            substructureWidth = Length.meters(7.2), provenance = synthetic,
+        ),
+        bopStack = DrillingBopStack(
+            id = "$id-bop", name = "Drilling BOP stack (demo)", provenance = synthetic,
+            components = listOf(
+                bopComponent("$id-bop-bn", DrillingBopComponentType.BELL_NIPPLE, "Bell nipple (demo)", null, "DEMO-FLOWLINE", "DEMO-BOP-A", 2.75),
+                bopComponent("$id-bop-ann", DrillingBopComponentType.ANNULAR_PREVENTER, "Annular preventer (demo)", 5000.0, "DEMO-BOP-A", "DEMO-BOP-B", 1.35),
+                bopComponent(
+                    "$id-bop-dr", DrillingBopComponentType.DOUBLE_RAM_PREVENTER, "Double ram preventer (demo)", 5000.0, "DEMO-BOP-B", "DEMO-BOP-C", 1.5,
+                    rams = listOf(RamType.PIPE, RamType.BLIND_SHEAR),
+                ),
+                bopComponent(
+                    "$id-bop-sr", DrillingBopComponentType.SINGLE_RAM_PREVENTER, "Single ram preventer (demo)", 5000.0, "DEMO-BOP-C", "DEMO-BOP-D", 0.8,
+                    rams = listOf(RamType.PIPE),
+                ),
+                bopComponent(
+                    "$id-bop-ds", DrillingBopComponentType.DRILLING_SPOOL, "Drilling spool (demo)", 5000.0, "DEMO-BOP-D", "DEMO-WELLHEAD", 0.6,
+                    outlets = listOf(
+                        SideOutlet(
+                            "$id-bop-kill", OutletSide.LEFT,
+                            listOf(OutletFitting.GATE_VALVE, OutletFitting.GATE_VALVE, OutletFitting.LINE_CONNECTION),
+                            label = "Kill line (demo)", provenance = synthetic,
+                        ),
+                        SideOutlet(
+                            "$id-bop-choke", OutletSide.RIGHT,
+                            listOf(OutletFitting.GATE_VALVE, OutletFitting.ACTUATED_GATE_VALVE, OutletFitting.LINE_CONNECTION),
+                            label = "Choke line (demo)", provenance = synthetic,
+                        ),
+                    ),
+                ),
+            ),
+        ),
     )
 
     private fun ctOperation(id: String, currentDepth: Double): CtOperation {
@@ -390,7 +555,8 @@ object SyntheticDemoProjects {
             id = "$id-ct-op",
             name = "CT cleanout (demo)",
             objective = "Synthetic demonstration of CT placement and restriction checks.",
-            // Counter zero at the top of the tree (wellhead 0.8 m + tree without cap 2.2 m = 3.0 m above GL).
+            // Counter zero at the top of the tree: wellhead top flange at GL + tree without cap
+            // 3.0 m = 3.0 m above GL (checked against the stack-up calculation in tests).
             depthReference = DepthReference.Operation("$id-ct-zero", "CT zero (top of tree)", Length.meters(3.0)),
             currentDepth = Length.meters(currentDepth),
             ctString = CtString(

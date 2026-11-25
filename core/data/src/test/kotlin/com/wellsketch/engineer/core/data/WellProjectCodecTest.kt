@@ -9,7 +9,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 class WellProjectCodecTest {
 
@@ -43,5 +46,25 @@ class WellProjectCodecTest {
             assertTrue(project.name.startsWith(SyntheticDemoProjects.NAME_PREFIX))
             assertTrue(project.well.casingStrings.all { it.provenance.isSynthetic && it.spec.provenance.isSynthetic })
         }
+    }
+
+    @Test
+    fun documentsWrittenBeforeSurfaceEquipmentExistedStillDecode() {
+        // Simulate a document from the previous version: no wellhead, cellar, drilling
+        // rig-up, tree wings or valve operators.
+        val json = WellProjectCodec.json
+        val doc = json.parseToJsonElement(WellProjectCodec.encode(SyntheticDemoProjects.vertical())).jsonObject
+        fun JsonObject.without(vararg keys: String) = JsonObject(filterKeys { it !in keys })
+        fun strip(e: kotlinx.serialization.json.JsonElement): kotlinx.serialization.json.JsonElement = when (e) {
+            is JsonObject -> JsonObject(e.filterKeys { it != "operator" && it != "wingOutlets" }.mapValues { strip(it.value) })
+            is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(e.map(::strip))
+            else -> e
+        }
+        val well = doc.getValue("well").jsonObject.without("wellhead", "cellar", "drillingRigUp")
+        val old = strip(JsonObject(doc + ("well" to well))).toString()
+        val decoded = WellProjectCodec.decode(old)
+        assertNull(decoded.well.wellhead)
+        assertNull(decoded.well.drillingRigUp)
+        assertTrue(decoded.well.christmasTree!!.wingOutlets.isEmpty())
     }
 }

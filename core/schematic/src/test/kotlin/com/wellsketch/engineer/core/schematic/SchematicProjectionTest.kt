@@ -87,10 +87,29 @@ class SurfaceProjectionTest {
         val scene = base.copy(surfaceBlocks = SurfaceLayouts.forOperatingState(state, CtSurfaceViewMode.FULL))
         val p = SchematicProjection(scene, 720.0, 1400.0, ProjectionConfig(columnWidth = 160.0, surfaceBandHeight = 320.0))
         assertTrue(p.surfaceScale > 0.0)
-        for (b in scene.surfaceBlocks) {
+        // Equipment may now reach below GL (wellhead in the cellar), but only into the
+        // near-surface strip, never into the well schematic below it.
+        for (b in scene.allSurfaceBlocks) {
             val r = p.surfaceRect(b)
             assertTrue(r[0] >= 0.0 && r[2] <= 720.0, "${b.kind} x ${r[0]}..${r[2]}")
-            assertTrue(r[1] >= 0.0 && r[3] <= p.groundY + 1e-9, "${b.kind} y ${r[1]}..${r[3]}")
+            assertTrue(r[1] >= 0.0 && r[3] <= p.wellTopY + 1e-9, "${b.kind} y ${r[1]}..${r[3]}")
         }
+        val bounds = assertNotNull(p.surfaceBounds)
+        assertTrue(p.surfaceX(bounds.minX) >= -1e-9 && p.surfaceX(bounds.maxX) <= 720.0 + 1e-9)
+        assertTrue(p.surfaceY(bounds.maxY) >= -1e-9 && p.surfaceY(bounds.minY) <= p.wellTopY + 1e-9)
+    }
+
+    @Test
+    fun wellheadInCellarIsDrawnBelowGroundLevelInTheNearSurfaceStrip() {
+        val project = SyntheticDemoProjects.vertical()
+        val scene = WellSchematicBuilder().build(project.well, CompletionState.CURRENT)
+        val p = SchematicProjection(scene, 1080.0, 1800.0, ProjectionConfig(columnWidth = 160.0, surfaceBandHeight = 300.0))
+        assertTrue(p.nearSurfacePx > 0.0)
+        val chh = scene.surfaceBlocks.first()
+        assertTrue(p.surfaceRect(chh)[3] > p.groundY, "casing head housing must be below GL")
+        // the vertical mapping is continuous at the strip boundary and GL is the column top
+        assertEquals(p.groundY, p.tvdToY(0.0), 0.0)
+        assertEquals(p.wellTopY, p.tvdToY(p.nearSurfaceDepth), 1e-6)
+        assertTrue(p.tvdToY(p.nearSurfaceDepth + 1.0) > p.wellTopY)
     }
 }
