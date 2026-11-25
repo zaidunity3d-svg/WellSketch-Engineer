@@ -31,6 +31,8 @@ data class CtAnalysis(
     val surfaceStackup: SurfaceStackup,
     /** CT volumes, pumping times and annular velocities at the planned pump rate. */
     val volumes: CtVolumes,
+    /** Smallest diameters of the whole path (CT stack, tree, wellhead, downhole) vs CT and BHA. */
+    val pathSummary: CtPathSummary,
 )
 
 /**
@@ -48,6 +50,7 @@ class CtOperationAnalyzer(
     private val stackValidator: CtSurfaceStackValidator = CtSurfaceStackValidator(),
     private val stackupCalculator: SurfaceStackupCalculator = SurfaceStackupCalculator(),
     private val volumeCalculator: CtVolumeCalculator = CtVolumeCalculator(),
+    private val pathAnalyzer: CtPathRestrictionAnalyzer = CtPathRestrictionAnalyzer(),
 ) {
 
     fun analyze(well: Well, operation: CtOperation, viewMode: CtSurfaceViewMode): CtAnalysis {
@@ -98,6 +101,15 @@ class CtOperationAnalyzer(
             emptyList()
         }
 
+        val pathSummary = pathAnalyzer.summarize(
+            stack = operation.rigUp.pressureControlStack.takeIf { tree != null },
+            tree = tree,
+            wellheadSections = stackup.installedWellhead?.sections.orEmpty(),
+            flowPath = flowPath,
+            downholeAbove = passability.restrictionsAbove,
+            ctMaxOd = operation.ctString.maxOuterDiameter,
+            bhaMaxOd = operation.bha.maxOuterDiameter,
+        )
         val volumes = volumeCalculator.calculate(flowPath, placement, operation)
         val ctElements = ctElements(baseScene.groundLevelMd, operation, placement)
         val scene = baseScene.copy(
@@ -112,9 +124,10 @@ class CtOperationAnalyzer(
             passability = passability,
             placement = placement,
             stackIssues = stackIssues,
-            issues = issues + passability.issues + placement.issues + stackIssues + stackup.issues + volumes.issues,
+            issues = issues + passability.issues + placement.issues + stackIssues + stackup.issues + volumes.issues + pathSummary.issues,
             surfaceStackup = stackup,
             volumes = volumes,
+            pathSummary = pathSummary,
         )
     }
 

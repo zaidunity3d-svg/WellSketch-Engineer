@@ -459,26 +459,27 @@ object SyntheticDemoProjects {
 
     /**
      * Synthetic three-section wellhead in the cellar. Base 2.1 m below GL (0.3 m above the
-     * cellar floor); section heights 0.75 + 0.75 + 0.6 m put the top flange at GL.
+     * cellar floor); section heights 0.75 + 0.75 + 0.6 m put the top flange at GL. Bores are
+     * synthetic nominal values for the demo CT path check, not equipment data.
      */
     private fun wellhead(id: String) = Wellhead(
         id = "$id-wellhead",
         name = "Wellhead (demo)",
         sections = listOf(
             WellheadSection(
-                id = "$id-wh-ths", type = WellheadSectionType.TUBING_HEAD_SPOOL, name = "Tubing head spool (demo)",
+                id = "$id-wh-ths", type = WellheadSectionType.TUBING_HEAD_SPOOL, name = "Tubing head spool (demo)", bore = inch(7.0625),
                 topConnection = EndConnection("DEMO-WELLHEAD"), bottomConnection = EndConnection("DEMO-WH-2"),
                 ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(0.6),
                 sideOutlets = annulusOutlets("$id-wh-ths-o"), provenance = synthetic,
             ),
             WellheadSection(
-                id = "$id-wh-cs", type = WellheadSectionType.CASING_SPOOL, name = "Casing spool (demo)",
+                id = "$id-wh-cs", type = WellheadSectionType.CASING_SPOOL, name = "Casing spool (demo)", bore = inch(11.0),
                 topConnection = EndConnection("DEMO-WH-2"), bottomConnection = EndConnection("DEMO-WH-1"),
                 ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(0.75), suspendedStringId = "$id-c4",
                 sideOutlets = annulusOutlets("$id-wh-cs-o"), provenance = synthetic,
             ),
             WellheadSection(
-                id = "$id-wh-chh", type = WellheadSectionType.CASING_HEAD_HOUSING, name = "Casing head housing (demo)",
+                id = "$id-wh-chh", type = WellheadSectionType.CASING_HEAD_HOUSING, name = "Casing head housing (demo)", bore = inch(13.625),
                 topConnection = EndConnection("DEMO-WH-1"), bottomConnection = EndConnection("DEMO-SURFACE-CASING"),
                 ratedWorkingPressure = Pressure.psi(3000.0), height = Length.meters(0.75), suspendedStringId = "$id-c3",
                 sideOutlets = annulusOutlets("$id-wh-chh-o"), provenance = synthetic,
