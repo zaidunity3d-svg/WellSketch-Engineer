@@ -32,8 +32,8 @@ class CementVolumeCalculatorTest {
         assertEquals(listOf(DiameterBasis.STATED_ID, DiameterBasis.BIT_SIZE, DiameterBasis.BIT_SIZE), job.annulus.segments.map { it.outerBasis })
         assertEquals(11.022084766789941, job.annulus.total.cubicMeters, 1e-9)
         assertEquals(2.637184410336881, job.annulus.segments.first().volume.cubicMeters, 1e-9)
-        // displacement to the shoe when no float collar is recorded
-        assertEquals(46.37672631718511, job.displacement.total.cubicMeters, 1e-9)
+        // displacement to the shoe when no float collar is recorded (from GL, 11.1 m)
+        assertEquals(46.335822862642445, job.displacement.total.cubicMeters, 1e-9)
         assertNull(job.shoeTrack)
         assertTrue(job.issues.any { it.code == "CEMENT_NO_FLOAT_COLLAR" })
         // rathole: 10 m of 8-1/2 in hole below the shoe, reported but not included by default
@@ -56,7 +56,7 @@ class CementVolumeCalculatorTest {
         })
         val job = calc.calculate(geometry(w), production, CementExcessPolicy(openHoleExcessFraction = 0.30, includeRathole = true))!!
         assertEquals(0.4869458874126954, job.shoeTrack!!.volume.cubicMeters, 1e-12)
-        assertEquals(45.889780429772415, job.displacement.total.cubicMeters, 1e-9)
+        assertEquals(45.84887697522975, job.displacement.total.cubicMeters, 1e-9)
         val expected = 13.53755487372586 + 0.4869458874126954 + 0.36609615364794207 * 1.3
         assertEquals(expected, job.slurryVolume.cubicMeters, 1e-9)
         assertTrue(job.issues.none { it.code == "CEMENT_NO_FLOAT_COLLAR" })

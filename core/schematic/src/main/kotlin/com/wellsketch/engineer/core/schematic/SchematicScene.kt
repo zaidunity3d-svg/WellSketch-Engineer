@@ -216,8 +216,17 @@ data class CasingStubDrawing(
  * equipment (wing valves, chokes). Kept separate from [SchematicScene.surfaceBlocks],
  * which remain the contiguous pressure stack on the well axis.
  */
+/** Landing base plate under the lowest wellhead section, carried by the conductor. Drawing sizes only. */
+data class LandingBaseDrawing(
+    val sourceId: String,
+    val topAboveGl: Double,
+    val thickness: Double,
+    val halfWidth: Double,
+)
+
 data class SurfaceSite(
     val cellar: CellarDrawing? = null,
+    val landingBase: LandingBaseDrawing? = null,
     val rig: RigDrawing? = null,
     val casingStubs: List<CasingStubDrawing> = emptyList(),
     /** Off-axis pressure equipment, e.g. tree wing valves and chokes. */

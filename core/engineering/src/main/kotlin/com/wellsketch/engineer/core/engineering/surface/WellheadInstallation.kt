@@ -3,7 +3,6 @@ package com.wellsketch.engineer.core.engineering.surface
 import com.wellsketch.engineer.core.model.surface.OperatingState
 import com.wellsketch.engineer.core.model.surface.Wellhead
 import com.wellsketch.engineer.core.model.surface.WellheadSection
-import com.wellsketch.engineer.core.model.surface.WellheadSectionType
 
 /** How the wellhead sections installed in an operating state were decided. */
 enum class InstalledSectionsBasis(val label: String) {
@@ -13,8 +12,6 @@ enum class InstalledSectionsBasis(val label: String) {
     ENTERED("Entered nipple-up section"),
     /** Drilling: uppermost section whose top connection matches the drilling BOP bottom connection. */
     MATCHING_BOP_CONNECTION("Matched to the BOP bottom connection"),
-    /** Drilling, no match: tubing head spools are assumed not installed yet. */
-    TUBING_HEAD_NOT_YET_INSTALLED("Assumed: tubing head spool not yet installed"),
 }
 
 /**
@@ -40,10 +37,10 @@ data class InstalledWellhead(
  * Completed and CT states use every section (the tree sits on the top section). In the
  * drilling state the BOP sits on one section and everything above it is not installed yet:
  * 1. the section entered as [com.wellsketch.engineer.core.model.surface.DrillingRigUp.nippledUpOnSectionId];
- * 2. otherwise the uppermost section whose top connection matches the BOP bottom connection,
- *    preferring a casing head or casing spool over a tubing head spool (the tubing head spool
- *    is normally installed after the production casing);
- * 3. otherwise the uppermost section below any tubing head spools at the top.
+ * 2. otherwise the uppermost section whose top connection matches the BOP bottom connection;
+ * 3. otherwise every section (nothing is assumed; the connection mismatch is reported).
+ * Practice differs between operators (e.g. a BOP on the tubing head spool through a DSA while
+ * drilling the last hole section), so no section type is assumed missing.
  */
 object WellheadInstallation {
 
@@ -61,16 +58,10 @@ object WellheadInstallation {
 
         val bopBottom = rigUp.bopStack.components.lastOrNull()?.bottomConnection?.designation?.trim()
         if (!bopBottom.isNullOrEmpty()) {
-            val matching = sections.indices.filter { sections[it].topConnection.designation.trim() == bopBottom }
-            val pick = matching.firstOrNull { sections[it].type != WellheadSectionType.TUBING_HEAD_SPOOL } ?: matching.firstOrNull()
-            if (pick != null) return split(sections, pick, InstalledSectionsBasis.MATCHING_BOP_CONNECTION, unknown)
+            val pick = sections.indexOfFirst { it.topConnection.designation.trim() == bopBottom }
+            if (pick >= 0) return split(sections, pick, InstalledSectionsBasis.MATCHING_BOP_CONNECTION, unknown)
         }
-        val leadingTubingHeads = sections.takeWhile { it.type == WellheadSectionType.TUBING_HEAD_SPOOL }.size
-        return if (leadingTubingHeads in 1 until sections.size) {
-            split(sections, leadingTubingHeads, InstalledSectionsBasis.TUBING_HEAD_NOT_YET_INSTALLED, unknown)
-        } else {
-            InstalledWellhead(sections, emptyList(), InstalledSectionsBasis.ALL_SECTIONS, unknown)
-        }
+        return InstalledWellhead(sections, emptyList(), InstalledSectionsBasis.ALL_SECTIONS, unknown)
     }
 
     private fun split(sections: List<WellheadSection>, topIndex: Int, basis: InstalledSectionsBasis, unknown: String? = null) =

@@ -158,6 +158,7 @@ object SurfaceArtwork {
         remote.forEach { pen.remoteUnit(it) }
         val stubRadius = site.casingStubs.lastOrNull()?.outerRadius ?: 0.17
         site.casingStubs.forEach { pen.casingStub(it) }
+        site.landingBase?.let { pen.landingBase(it, stubRadius + 0.035) }
 
         // Hydraulic hoses run behind the BOP stack to the accumulator side.
         if (site.rig != null) axis.filter { it.kind == SurfaceBlockKind.DRILLING_RAM || it.kind == SurfaceBlockKind.DRILLING_ANNULAR }.forEach { pen.hoses(it, site.rig) }
@@ -342,6 +343,20 @@ private class Pen(val px: Double) {
         if (s.topAboveGl <= s.bottomAboveGl) return
         rect(-s.outerRadius, s.bottomAboveGl, s.outerRadius, s.topAboveGl, ArtFill.CylinderX(ArtColors.PIPE_DARK), s.sourceId)
         if (shows(0.02)) line(-s.outerRadius, s.topAboveGl, s.outerRadius, s.topAboveGl, ArtColors.NUT, 0.015)
+    }
+
+    /** Landing base plate on the conductor with gussets up to the lowest wellhead section. */
+    fun landingBase(b: LandingBaseDrawing, innerHalf: Double) {
+        val src = b.sourceId
+        val top = b.topAboveGl
+        val gusset = min(0.24, b.halfWidth - innerHalf)
+        for (s in listOf(-1, 1)) {
+            poly(
+                listOf(ArtPoint(s * innerHalf, top), ArtPoint(s * (b.halfWidth - 0.04), top), ArtPoint(s * innerHalf, top + gusset)),
+                ArtFill.Solid(ArtColors.STEEL_DARK), src,
+            )
+        }
+        rect(-b.halfWidth, top - b.thickness, b.halfWidth, top, ArtFill.CylinderX(ArtColors.STEEL_DARK), src, corner = 0.01)
     }
 
     fun rigBack(r: RigDrawing) {

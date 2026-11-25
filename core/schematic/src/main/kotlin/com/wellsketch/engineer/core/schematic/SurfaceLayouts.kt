@@ -95,6 +95,7 @@ object SurfaceLayouts {
     private const val FLOOR_DECK = 0.3
     private const val ROTARY_BEAM_DEPTH = 0.45
     private const val STUB_BELOW = 0.35
+    private const val LANDING_BASE_THICKNESS = 0.06
 
     /**
      * Drawing widths (metres) used by the layout and the artwork. Visual only. The wellhead
@@ -182,10 +183,16 @@ object SurfaceLayouts {
             )
         }
 
+        val base = wellhead.first().bottomAboveGl
+        val landingBase = inputs.wellhead?.takeIf { it.hasLandingBase && it.sections.isNotEmpty() }?.let { wh ->
+            val conductor = inputs.surfaceCasings.filter { it.isConductor }.maxOfOrNull { it.outerDiameter / 2.0 } ?: 0.0
+            LandingBaseDrawing(wh.id, base, LANDING_BASE_THICKNESS, max(conductor + 0.12, Widths.WELLHEAD_FLANGE / 2 + 0.16))
+        }
         val site = SurfaceSite(
             cellar = cellar,
+            landingBase = landingBase,
             rig = rig,
-            casingStubs = casingStubs(inputs, wellhead.first().bottomAboveGl, cellar),
+            casingStubs = casingStubs(inputs, base, cellar, landingBase),
             sideBlocks = side,
             structureBlocks = structures,
             showsCoiledTubing = state is OperatingState.CoiledTubingIntervention,
@@ -242,13 +249,15 @@ object SurfaceLayouts {
         id = o.id, side = o.side.sign, fittings = o.fittings, label = o.label ?: o.fittings.joinToString { it.label },
     )
 
-    private fun casingStubs(inputs: SurfaceInputs, wellheadBase: Double, cellar: CellarDrawing?): List<CasingStubDrawing> {
+    private fun casingStubs(inputs: SurfaceInputs, wellheadBase: Double, cellar: CellarDrawing?, landingBase: LandingBaseDrawing?): List<CasingStubDrawing> {
         if (inputs.surfaceCasings.isEmpty()) return emptyList()
         val floor = cellar?.let { it.floorAboveGl - it.slabThickness }
         val bottom = min(floor ?: wellheadBase, wellheadBase) - STUB_BELOW
         val out = mutableListOf<CasingStubDrawing>()
         inputs.surfaceCasings.filter { it.isConductor }.forEach { c ->
-            val top = cellar?.let { it.floorAboveGl + 0.12 } ?: (wellheadBase - 0.2)
+            // A landing base sits on the conductor; otherwise the conductor is cut near the cellar floor.
+            val top = landingBase?.let { it.topAboveGl - it.thickness }
+                ?: cellar?.let { it.floorAboveGl + 0.12 } ?: (wellheadBase - 0.2)
             out += CasingStubDrawing(c.id, c.name, c.outerDiameter / 2.0, min(top, wellheadBase), bottom)
         }
         inputs.surfaceCasings.firstOrNull { !it.isConductor }?.let { c ->

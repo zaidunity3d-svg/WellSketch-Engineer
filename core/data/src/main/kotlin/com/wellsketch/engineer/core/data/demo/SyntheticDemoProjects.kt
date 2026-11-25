@@ -84,16 +84,37 @@ object SyntheticDemoProjects {
         "Entire project is synthetic demonstration data. Not for engineering use.",
     )
 
-    // Synthetic datums shared by all demo wells: GL 250 m above MSL, RKB 9 m above GL.
+    // Datums shared by all demo wells: GL 250 m above MSL (synthetic); RKB (drill floor
+    // reference) 11.10 m above GL, from the owner-approved reference BOP/wellhead stack-up.
     private val datums = WellDatums(
-        rkbElevation = Length.meters(259.0),
+        rkbElevation = Length.meters(261.10),
         groundLevelElevation = Length.meters(250.0),
         provenance = synthetic,
     )
-    private const val GL_MD = 9.0
+    private const val GL_MD = 11.10
 
-    /** Elevation of the wellhead top flange (tree landing) relative to GL in the demos. */
-    private const val TREE_LANDING_ABOVE_GL = 0.0
+    /**
+     * Owner-approved reference stack-up (2026-11-26), heights in metres. Equipment heights,
+     * arrangement and elevations only; no operator, field or well data. Values not given by
+     * the reference stay synthetic and are marked so where they are used.
+     */
+    private object RefStack {
+        const val ANNULAR = 1.22
+        const val DOUBLE_RAM = 1.78
+        const val DRILLING_SPOOL = 0.80
+        const val SINGLE_RAM = 1.27
+        const val SPACER_SPOOL = 0.60
+        const val DSA = 0.18
+        const val TUBING_HEAD_SPOOL = 0.72
+        /** Upper + lower casing spool together; the split between them was not given. */
+        const val CASING_SPOOLS_TOTAL = 1.55
+        /** Top of the landing base (bottom of the lower casing spool), below GL. */
+        const val LANDING_BASE_BELOW_GL = 1.29
+        const val CELLAR_DEPTH = 2.50
+    }
+
+    /** Elevation of the wellhead top flange (tree landing) relative to GL: −1.29 + 1.55 + 0.72 = 0.98 m. */
+    private const val TREE_LANDING_ABOVE_GL = 0.98
 
     // Synthetic tubular "specs" (round illustrative numbers, NOT catalog values).
     private val conductorSpec = spec(20.0, 19.0, SyntheticEquipmentCatalog.CONDUCTOR_20, "DEMO")
@@ -423,7 +444,7 @@ object SyntheticDemoProjects {
             stackComponent("$id-t-tee", StackComponentType.FLOW_TEE, "Flow cross (demo)", 3.0, 5000.0, "DEMO-T1", "DEMO-T2", 0.5),
             stackComponent("$id-t-umv", StackComponentType.UPPER_MASTER_VALVE, "Upper master valve (demo)", 3.0, 5000.0, "DEMO-T2", "DEMO-T3", 0.7, ValveOperator.HYDRAULIC),
             stackComponent("$id-t-lmv", StackComponentType.LOWER_MASTER_VALVE, "Lower master valve (demo)", 3.0, 5000.0, "DEMO-T3", "DEMO-T4", 0.7, ValveOperator.MANUAL),
-            stackComponent("$id-t-tha", StackComponentType.TUBING_HEAD_ADAPTER, "Tubing head adapter (demo)", 3.0, 5000.0, "DEMO-T4", "DEMO-WELLHEAD", 0.5),
+            stackComponent("$id-t-tha", StackComponentType.TUBING_HEAD_ADAPTER, "Tubing head adapter (demo)", 3.0, 5000.0, "DEMO-T4", THS_TOP, 0.5),
         ),
         wellheadTopAboveGroundLevel = Length.meters(TREE_LANDING_ABOVE_GL),
         provenance = synthetic,
@@ -446,8 +467,8 @@ object SyntheticDemoProjects {
         ),
     )
 
-    // Synthetic cellar: 2.4 m deep, 2.4 m clear width.
-    private val cellar = Cellar(Length.meters(2.4), Length.meters(2.4), synthetic)
+    // Cellar 2.50 m deep (reference stack-up); clear width 2.4 m (synthetic).
+    private val cellar = Cellar(Length.meters(RefStack.CELLAR_DEPTH), Length.meters(2.4), synthetic)
 
     private fun annulusOutlets(prefix: String) = listOf(
         SideOutlet("$prefix-l", OutletSide.LEFT, listOf(OutletFitting.BULL_PLUG), label = "Annulus outlet, plugged (demo)", provenance = synthetic),
@@ -458,36 +479,42 @@ object SyntheticDemoProjects {
     )
 
     /**
-     * Synthetic three-section wellhead in the cellar. Base 2.1 m below GL (0.3 m above the
-     * cellar floor); section heights 0.75 + 0.75 + 0.6 m put the top flange at GL. Bores are
-     * synthetic nominal values for the demo CT path check, not equipment data.
+     * Three-section wellhead from the reference stack-up: lower casing spool on a landing base
+     * 1.29 m below GL, upper casing spool, tubing head spool (top flange 11 in 5K) whose top is
+     * 0.98 m above GL. The 1.55 m of the two casing spools is split equally here because the
+     * reference gives only the total. Bores are synthetic nominal values for the CT path check.
      */
     private fun wellhead(id: String) = Wellhead(
         id = "$id-wellhead",
         name = "Wellhead (demo)",
         sections = listOf(
             WellheadSection(
-                id = "$id-wh-ths", type = WellheadSectionType.TUBING_HEAD_SPOOL, name = "Tubing head spool (demo)", bore = inch(7.0625),
-                topConnection = EndConnection("DEMO-WELLHEAD"), bottomConnection = EndConnection("DEMO-WH-2"),
-                ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(0.6),
+                id = "$id-wh-ths", type = WellheadSectionType.TUBING_HEAD_SPOOL, name = "Tubing head spool (demo)", bore = inch(11.0),
+                topConnection = EndConnection(THS_TOP), bottomConnection = EndConnection("DEMO-WH-2"),
+                ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(RefStack.TUBING_HEAD_SPOOL),
                 sideOutlets = annulusOutlets("$id-wh-ths-o"), provenance = synthetic,
             ),
             WellheadSection(
-                id = "$id-wh-cs", type = WellheadSectionType.CASING_SPOOL, name = "Casing spool (demo)", bore = inch(11.0),
+                id = "$id-wh-cs", type = WellheadSectionType.CASING_SPOOL, name = "Upper casing spool (demo)", bore = inch(11.0),
                 topConnection = EndConnection("DEMO-WH-2"), bottomConnection = EndConnection("DEMO-WH-1"),
-                ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(0.75), suspendedStringId = "$id-c4",
-                sideOutlets = annulusOutlets("$id-wh-cs-o"), provenance = synthetic,
+                ratedWorkingPressure = Pressure.psi(5000.0), height = Length.meters(RefStack.CASING_SPOOLS_TOTAL / 2),
+                suspendedStringId = "$id-c4", sideOutlets = annulusOutlets("$id-wh-cs-o"), provenance = synthetic,
             ),
             WellheadSection(
-                id = "$id-wh-chh", type = WellheadSectionType.CASING_HEAD_HOUSING, name = "Casing head housing (demo)", bore = inch(13.625),
+                id = "$id-wh-chh", type = WellheadSectionType.CASING_HEAD_HOUSING, name = "Lower casing spool (demo)", bore = inch(13.625),
                 topConnection = EndConnection("DEMO-WH-1"), bottomConnection = EndConnection("DEMO-SURFACE-CASING"),
-                ratedWorkingPressure = Pressure.psi(3000.0), height = Length.meters(0.75), suspendedStringId = "$id-c3",
-                sideOutlets = annulusOutlets("$id-wh-chh-o"), provenance = synthetic,
+                ratedWorkingPressure = Pressure.psi(3000.0), height = Length.meters(RefStack.CASING_SPOOLS_TOTAL / 2),
+                suspendedStringId = "$id-c3", sideOutlets = annulusOutlets("$id-wh-chh-o"), provenance = synthetic,
             ),
         ),
-        baseRelativeToGroundLevel = Length.meters(-2.1),
+        baseRelativeToGroundLevel = Length.meters(-RefStack.LANDING_BASE_BELOW_GL),
+        hasLandingBase = true,
         provenance = synthetic,
     )
+
+    /** Tubing head spool top flange (reference: 11 in 5K, mated by the DSA or the tree adapter). */
+    private const val THS_TOP = "11 in 5K"
+    private const val BOP_FLANGE = "13-5/8 in 10K"
 
     private fun bopComponent(
         id: String, type: DrillingBopComponentType, name: String, ratingPsi: Double?, top: String, bottom: String,
@@ -499,30 +526,29 @@ object SyntheticDemoProjects {
     )
 
     /**
-     * Synthetic drilling rig-up: drill floor 0.5 m below RKB (8.5 m above GL), 7.6 m clear
-     * under the rotary beams; BOP stack 7.0 m tall on the wellhead top at GL.
+     * Drilling rig-up from the reference stack-up (top to bottom): annular 1.22 m, double ram
+     * 1.78 m (variable-bore rams over blind rams), drilling spool 0.80 m (kill line left, choke
+     * line right), single pipe ram 1.27 m, spacer spool 0.60 m and DSA 0.18 m (13-5/8 in 10K x
+     * 11 in 5K) on the tubing head spool. Annular top 6.83 m and drill floor 11.10 m above GL.
+     * Synthetic (not in the reference): bell nipple height, rotary-beam clear height, width.
      */
     private fun drillingRigUp(id: String) = DrillingRigUp(
         rig = DrillingRig(
             id = "$id-rig", name = "Drilling rig (demo)",
-            floorBelowRkb = Length.meters(0.5), clearHeightUnderRotaryBeams = Length.meters(7.6),
+            floorBelowRkb = Length.meters(0.0), clearHeightUnderRotaryBeams = Length.meters(10.0),
             substructureWidth = Length.meters(7.2), provenance = synthetic,
         ),
         bopStack = DrillingBopStack(
             id = "$id-bop", name = "Drilling BOP stack (demo)", provenance = synthetic,
             components = listOf(
                 bopComponent("$id-bop-bn", DrillingBopComponentType.BELL_NIPPLE, "Bell nipple (demo)", null, "DEMO-FLOWLINE", "DEMO-BOP-A", 2.75),
-                bopComponent("$id-bop-ann", DrillingBopComponentType.ANNULAR_PREVENTER, "Annular preventer (demo)", 5000.0, "DEMO-BOP-A", "DEMO-BOP-B", 1.35),
+                bopComponent("$id-bop-ann", DrillingBopComponentType.ANNULAR_PREVENTER, "Annular preventer (demo)", 5000.0, "DEMO-BOP-A", BOP_FLANGE, RefStack.ANNULAR),
                 bopComponent(
-                    "$id-bop-dr", DrillingBopComponentType.DOUBLE_RAM_PREVENTER, "Double ram preventer (demo)", 5000.0, "DEMO-BOP-B", "DEMO-BOP-C", 1.5,
-                    rams = listOf(RamType.PIPE, RamType.BLIND_SHEAR),
+                    "$id-bop-dr", DrillingBopComponentType.DOUBLE_RAM_PREVENTER, "Double ram, VBR/blind (demo)", 10000.0, BOP_FLANGE, BOP_FLANGE, RefStack.DOUBLE_RAM,
+                    rams = listOf(RamType.VARIABLE_BORE, RamType.BLIND),
                 ),
                 bopComponent(
-                    "$id-bop-sr", DrillingBopComponentType.SINGLE_RAM_PREVENTER, "Single ram preventer (demo)", 5000.0, "DEMO-BOP-C", "DEMO-BOP-D", 0.8,
-                    rams = listOf(RamType.PIPE),
-                ),
-                bopComponent(
-                    "$id-bop-ds", DrillingBopComponentType.DRILLING_SPOOL, "Drilling spool (demo)", 5000.0, "DEMO-BOP-D", "DEMO-WH-2", 0.6,
+                    "$id-bop-ds", DrillingBopComponentType.DRILLING_SPOOL, "Drilling spool (demo)", 10000.0, BOP_FLANGE, BOP_FLANGE, RefStack.DRILLING_SPOOL,
                     outlets = listOf(
                         SideOutlet(
                             "$id-bop-kill", OutletSide.LEFT,
@@ -536,6 +562,12 @@ object SyntheticDemoProjects {
                         ),
                     ),
                 ),
+                bopComponent(
+                    "$id-bop-sr", DrillingBopComponentType.SINGLE_RAM_PREVENTER, "Single ram, pipe (demo)", 10000.0, BOP_FLANGE, BOP_FLANGE, RefStack.SINGLE_RAM,
+                    rams = listOf(RamType.PIPE),
+                ),
+                bopComponent("$id-bop-sp", DrillingBopComponentType.SPACER_SPOOL, "Spacer spool (demo)", 10000.0, BOP_FLANGE, BOP_FLANGE, RefStack.SPACER_SPOOL),
+                bopComponent("$id-bop-dsa", DrillingBopComponentType.SPACER_SPOOL, "DSA 13-5/8 x 11 (demo)", 5000.0, BOP_FLANGE, THS_TOP, RefStack.DSA),
             ),
         ),
     )
@@ -557,9 +589,9 @@ object SyntheticDemoProjects {
             id = "$id-ct-op",
             name = "CT cleanout (demo)",
             objective = "Synthetic demonstration of CT placement and restriction checks.",
-            // Counter zero at the top of the tree: wellhead top flange at GL + tree without cap
-            // 3.0 m = 3.0 m above GL (checked against the stack-up calculation in tests).
-            depthReference = DepthReference.Operation("$id-ct-zero", "CT zero (top of tree)", Length.meters(3.0)),
+            // Counter zero at the top of the tree: wellhead top flange 0.98 m above GL + tree
+            // without cap 3.0 m = 3.98 m above GL (checked against the stack-up in tests).
+            depthReference = DepthReference.Operation("$id-ct-zero", "CT zero (top of tree)", Length.meters(TREE_LANDING_ABOVE_GL + 3.0)),
             currentDepth = Length.meters(currentDepth),
             ctString = CtString(
                 id = "$id-ct-string",

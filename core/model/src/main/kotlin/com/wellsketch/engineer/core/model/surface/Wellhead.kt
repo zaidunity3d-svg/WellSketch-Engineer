@@ -83,6 +83,11 @@ data class Wellhead(
      * to sit on the cellar floor and the assumption is reported.
      */
     val baseRelativeToGroundLevel: Length? = null,
+    /**
+     * True when the lowest section sits on a landing base (base plate) carried by the
+     * conductor; the base top is at [baseRelativeToGroundLevel].
+     */
+    val hasLandingBase: Boolean = false,
     val provenance: DataProvenance,
 )
 

@@ -29,21 +29,28 @@ class SurfaceLayoutTest {
     }
 
     @Test
-    fun threeSectionWellheadSitsInTheCellarBelowGroundLevel() {
+    fun threeSectionWellheadStandsOnTheLandingBaseInTheCellar() {
+        // Reference stack-up: landing base 1.29 m below GL, cellar 2.50 m deep, casing spools
+        // 1.55 m + tubing head spool 0.72 m, so the wellhead top is 0.98 m above GL.
         val layout = SurfaceLayouts.layout(OperatingState.CompletedWithTree(well.christmasTree!!), inputs = inputs)
         val wellhead = layout.blocks.filter { it.kind == SurfaceBlockKind.WELLHEAD }
         assertEquals(3, wellhead.size)
-        assertEquals(-2.1, wellhead.first().bottomAboveGl, 1e-9)
-        assertEquals(0.0, wellhead.last().topAboveGl, 1e-9)
+        assertEquals(-1.29, wellhead.first().bottomAboveGl, 1e-9)
+        assertEquals(0.98, wellhead.last().topAboveGl, 1e-9)
+        assertEquals(0.72, wellhead.last().height, 1e-9)
+        assertEquals(1.55, wellhead[0].height + wellhead[1].height, 1e-9)
         val cellar = assertNotNull(layout.site.cellar)
-        assertEquals(-2.4, cellar.floorAboveGl, 1e-9)
-        assertTrue(wellhead.all { it.bottomAboveGl >= cellar.floorAboveGl && it.topAboveGl <= 0.0 + 1e-9 })
+        assertEquals(-2.5, cellar.floorAboveGl, 1e-9)
+        assertTrue(wellhead.all { it.bottomAboveGl >= cellar.floorAboveGl })
         assertTrue(wellhead.all { it.centerOffset == 0.0 })
-        // the casing head housing stands on the surface casing stub; the conductor stops at the cellar floor
+        // landing base on the conductor; the lowest section stands on the surface casing stub
+        val base = assertNotNull(layout.site.landingBase)
+        assertEquals(-1.29, base.topAboveGl, 1e-9)
         val stubs = layout.site.casingStubs
         assertEquals(2, stubs.size)
-        assertEquals(-2.1, stubs.last().topAboveGl, 1e-9)
-        assertTrue(stubs.first().topAboveGl < -2.1)
+        assertEquals(-1.29, stubs.last().topAboveGl, 1e-9)
+        assertEquals(base.topAboveGl - base.thickness, stubs.first().topAboveGl, 1e-9) // conductor carries the base
+        assertTrue(base.halfWidth > stubs.first().outerRadius)
     }
 
     @Test
@@ -56,14 +63,16 @@ class SurfaceLayoutTest {
         assertTrue(layout.blocks.all { it.centerOffset == 0.0 }, "all equipment on the well centerline")
         assertContiguousOnAxis(layout.blocks)
         val firstBop = layout.blocks.first { it.kind in drillingKinds }
-        // Demo BOP bottom matches the casing spool top: the tubing head spool is not installed
-        // while drilling, so the BOP is nippled up 0.6 m below GL, inside the cellar.
-        assertEquals(-0.6, firstBop.bottomAboveGl, 1e-9)
+        // Reference stack-up: DSA (11 in 5K) on the tubing head spool top, 0.98 m above GL.
+        assertEquals(0.98, firstBop.bottomAboveGl, 1e-9)
         val wellheadIds = layout.blocks.filter { it.kind == SurfaceBlockKind.WELLHEAD }.map { it.sourceId }
-        assertEquals(well.wellhead!!.sections.drop(1).map { it.id }.reversed(), wellheadIds)
+        assertEquals(well.wellhead!!.sections.map { it.id }.reversed(), wellheadIds)
+        // annular top = 0.98 + 0.18 + 0.60 + 1.27 + 0.80 + 1.78 + 1.22 = 6.83 m above GL
+        val annular = layout.blocks.single { it.kind == SurfaceBlockKind.DRILLING_ANNULAR }
+        assertEquals(6.83, annular.topAboveGl, 1e-9)
         val rig = assertNotNull(layout.site.rig)
-        assertEquals(8.5, rig.floorTopAboveGl, 1e-9)
-        assertEquals(7.6, rig.beamsUndersideAboveGl, 1e-9)
+        assertEquals(11.10, rig.floorTopAboveGl, 1e-9) // reference: drill floor 11.10 m above GL
+        assertEquals(10.0, rig.beamsUndersideAboveGl, 1e-9)
         assertTrue(layout.blocks.last().topAboveGl <= rig.beamsUndersideAboveGl)
         assertTrue(layout.site.structureBlocks.any { it.kind == SurfaceBlockKind.SUBSTRUCTURE })
         assertTrue(layout.site.structureBlocks.any { it.kind == SurfaceBlockKind.RIG_FLOOR })
@@ -75,11 +84,11 @@ class SurfaceLayoutTest {
         val ths = well.wellhead!!.sections.first()
         val onThs = SurfaceLayouts.layout(OperatingState.Drilling(rigUp.copy(nippledUpOnSectionId = ths.id)), inputs = inputs)
         assertEquals(3, onThs.blocks.count { it.kind == SurfaceBlockKind.WELLHEAD })
-        assertEquals(0.0, onThs.blocks.first { it.kind in drillingKinds }.bottomAboveGl, 1e-9)
+        assertEquals(0.98, onThs.blocks.first { it.kind in drillingKinds }.bottomAboveGl, 1e-9)
         val chh = well.wellhead!!.sections.last()
         val onChh = SurfaceLayouts.layout(OperatingState.Drilling(rigUp.copy(nippledUpOnSectionId = chh.id)), inputs = inputs)
         assertEquals(listOf(chh.id), onChh.blocks.filter { it.kind == SurfaceBlockKind.WELLHEAD }.map { it.sourceId })
-        assertEquals(-2.1 + 0.75, onChh.blocks.first { it.kind in drillingKinds }.bottomAboveGl, 1e-9)
+        assertEquals(-1.29 + 0.775, onChh.blocks.first { it.kind in drillingKinds }.bottomAboveGl, 1e-9)
         assertContiguousOnAxis(onChh.blocks)
     }
 

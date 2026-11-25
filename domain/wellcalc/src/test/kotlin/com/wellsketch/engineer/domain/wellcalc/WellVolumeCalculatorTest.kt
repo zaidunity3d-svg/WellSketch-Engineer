@@ -41,22 +41,23 @@ class WellVolumeCalculatorTest {
     @Test
     fun flowPathVolumeIsSplitAtEveryGeometryChangeAndSumsCorrectly() {
         val v = calc.flowPathVolume(vertical)
-        // tubing 9–2250 (ID 2.9 in), 7 in casing 2250–2390 (ID 6.2 in), 8-1/2 in hole 2390–2400
-        assertEquals(12.642812707288545, v.total.cubicMeters, 1e-9)
-        assertEquals(79.52089953485938, v.total.barrels, 1e-8)
-        assertEquals(listOf(9.0, 2250.0, 2390.0), v.segments.map { it.topMd.meters })
+        // tubing 11.1–2250 (ID 2.9 in), 7 in casing 2250–2390 (ID 6.2 in), 8-1/2 in hole 2390–2400;
+        // values from verify/expected_vertical.py (GL MD 11.1)
+        assertEquals(12.633863746500204, v.total.cubicMeters, 1e-9)
+        assertEquals(79.4646122649087, v.total.barrels, 1e-8)
+        assertEquals(listOf(11.1, 2250.0, 2390.0), v.segments.map { it.topMd.meters })
         assertEquals(listOf(2250.0, 2390.0, 2400.0), v.segments.map { it.bottomMd.meters })
         assertEquals(listOf(2.9, 6.2, 8.5), v.segments.map { it.outerDiameter.inches }.map { Math.round(it * 1000) / 1000.0 })
         // segments are contiguous and their lengths add up to the interval
         v.segments.zipWithNext().forEach { (a, b) -> assertEquals(a.bottomMd.meters, b.topMd.meters, 1e-9) }
-        assertEquals(2400.0 - 9.0, v.length.meters, 1e-9)
+        assertEquals(2400.0 - 11.1, v.length.meters, 1e-9)
         assertTrue(v.usesBitSize && v.issues.any { it.code == "VOLUME_BIT_SIZE" })
     }
 
     @Test
     fun tubingInsideAndBelowTubingAddUpToTheFlowPath() {
         val report = WellCalculations().report(SyntheticDemoProjects.vertical().well, CompletionState.CURRENT)
-        assertEquals(9.549819584129509, report.tubingInside!!.total.cubicMeters, 1e-9)
+        assertEquals(9.540870623341167, report.tubingInside!!.total.cubicMeters, 1e-9)
         assertEquals(3.0929931231590366, report.belowTubing!!.total.cubicMeters, 1e-9)
         assertEquals(report.flowPath.total.cubicMeters, report.tubingInside!!.total.cubicMeters + report.belowTubing!!.total.cubicMeters, 1e-9)
     }
@@ -64,8 +65,8 @@ class WellVolumeCalculatorTest {
     @Test
     fun tubingAnnulusStopsAtThePackerTop() {
         val a = calc.tubingAnnulusVolume(vertical)
-        assertEquals(29.076035510741562, a.total.cubicMeters, 1e-9)
-        assertEquals(182.88276131692865, a.total.barrels, 1e-8)
+        assertEquals(29.048167106098678, a.total.cubicMeters, 1e-9)
+        assertEquals(182.70747432525107, a.total.barrels, 1e-8)
         assertEquals(2200.0, a.bottomMd!!.meters, 1e-9)
         assertEquals(1, a.segments.size)
     }
@@ -74,8 +75,8 @@ class WellVolumeCalculatorTest {
     fun flowPathStopsAtABridgePlugInADeviatedTubinglessWell() {
         val s = geometry(SyntheticDemoProjects.sShaped().well)
         val v = calc.flowPathVolume(s)
-        // 7 in casing ID 6.2 in from 9 m to the plug top at 2700 m MD; MD-based, independent of TVD
-        assertEquals(52.414855321102536, v.total.cubicMeters, 1e-9)
+        // 7 in casing ID 6.2 in from GL (11.1 m) to the plug top at 2700 m MD; MD-based, independent of TVD
+        assertEquals(52.37395186655987, v.total.cubicMeters, 1e-9)
         assertEquals(2700.0, v.bottomMd!!.meters, 1e-9)
         // an explicit interval through the plug is cut and reported
         val through = calc.flowPathVolume(s, m(2600.0), m(2850.0))
