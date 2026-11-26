@@ -52,8 +52,18 @@ object WellEdits {
     fun setHoleSectionBottom(well: Well, holeId: String, bottom: MeasuredDepth): EditOutcome {
         val target = well.holeSections.firstOrNull { it.id == holeId } ?: return EditOutcome.Rejected("Unknown hole section")
         if (bottom.value < Length.ZERO) return EditOutcome.Rejected("Depth must not be negative")
+        val oldBottom = target.bottom
+        // The section that started at the old bottom follows it, so the hole stays continuous.
         return EditOutcome.Applied(
-            well.copy(holeSections = well.holeSections.map { if (it.id == holeId) it.copy(bottom = bottom) else it }),
+            well.copy(
+                holeSections = well.holeSections.map {
+                    when {
+                        it.id == holeId -> it.copy(bottom = bottom)
+                        it.top == oldBottom && bottom.reference == oldBottom.reference -> it.copy(top = bottom)
+                        else -> it
+                    }
+                },
+            ),
         )
     }
 
