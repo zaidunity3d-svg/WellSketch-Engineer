@@ -1,5 +1,6 @@
 package com.wellsketch.engineer.domain.welldesign
 
+import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
 import com.wellsketch.engineer.core.model.datum.MeasuredDepth
 import com.wellsketch.engineer.core.model.datum.TrueVerticalDepth
 import com.wellsketch.engineer.core.model.geology.FormationTop
@@ -172,9 +173,25 @@ object WellStructureEdits {
         if (top == null) return updateString(well, stringId) { it.copy(cement = null) }
         if (top.reference != s.shoe.depth.reference) return EditOutcome.Rejected("Use the shoe's depth reference")
         if (!(top.value < s.shoe.depth.value)) return EditOutcome.Rejected("Top of cement must be above the shoe")
-        val sheath = s.cement?.copy(top = top, bottom = s.shoe.depth)
+        // A tail top that would end up above the new TOC is dropped (the whole column is then lead).
+        val sheath = s.cement?.copy(top = top, bottom = s.shoe.depth)?.let { c -> c.copy(tailTop = c.tailTop?.takeIf { it.value > top.value }) }
             ?: CementSheath(top = top, bottom = s.shoe.depth, status = CementStatus.DESIGNED, provenance = user())
         return updateString(well, stringId) { it.copy(cement = sheath) }
+    }
+
+    /** Sets where the tail slurry starts (between TOC and the cement bottom), or removes the lead/tail split. */
+    fun setCementTailTop(well: Well, stringId: String, tailTop: MeasuredDepth?): EditOutcome {
+        val s = well.casingStrings.firstOrNull { it.id == stringId } ?: return EditOutcome.Rejected("Unknown casing string")
+        val c = s.cement ?: return EditOutcome.Rejected("Add cement to ${s.name} first")
+        if (tailTop != null) {
+            // Compared in the canonical MD datum, so a tail top entered from GL works with a TOC from RKB.
+            val ctx = WellGeometryContext(well)
+            val tail = ctx.canonical(tailTop)
+            if (!(tail > ctx.canonical(c.top) && tail < ctx.canonical(c.bottom))) {
+                return EditOutcome.Rejected("Tail top must be between the top of cement and the cement bottom")
+            }
+        }
+        return updateString(well, stringId) { it.copy(cement = c.copy(tailTop = tailTop)) }
     }
 
     private fun updateString(well: Well, stringId: String, change: (CasingString) -> CasingString): EditOutcome {

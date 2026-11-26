@@ -5,17 +5,22 @@ import androidx.lifecycle.viewModelScope
 import com.wellsketch.engineer.core.data.repository.WellProjectRepository
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
 import com.wellsketch.engineer.core.engineering.volumes.VolumeBreakdown
+import com.wellsketch.engineer.core.engineering.volumes.WellboreGeometry
 import com.wellsketch.engineer.core.model.project.WellProject
 import com.wellsketch.engineer.core.model.units.Density
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.Pressure
 import com.wellsketch.engineer.core.model.well.CompletionState
+import com.wellsketch.engineer.domain.wellcalc.AnnulusBoundary
 import com.wellsketch.engineer.domain.wellcalc.CementExcessPolicy
 import com.wellsketch.engineer.domain.wellcalc.FluidColumn
 import com.wellsketch.engineer.domain.wellcalc.HydrostaticCalculator
 import com.wellsketch.engineer.domain.wellcalc.HydrostaticResult
 import com.wellsketch.engineer.domain.wellcalc.WellCalculationReport
 import com.wellsketch.engineer.domain.wellcalc.WellCalculations
+import com.wellsketch.engineer.domain.wellcalc.ObjectVolumeCalculator
+import com.wellsketch.engineer.domain.wellcalc.ObjectVolumeMode
+import com.wellsketch.engineer.domain.wellcalc.VolumePipe
 import com.wellsketch.engineer.domain.wellcalc.WellVolumeCalculator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,10 +39,29 @@ data class WellCalcInputs(
     val hydrostaticTargetMd: Length? = null,
     val surfacePressure: Pressure = Pressure.ZERO,
     val openHoleExcessPercent: Double = 0.0,
+    val casedHoleExcessPercent: Double = 0.0,
     val includeRathole: Boolean = false,
     /** Interval for the free volume tool (canonical MD); null = flow-path top / accessible bottom. */
     val intervalTopMd: Length? = null,
     val intervalBottomMd: Length? = null,
+    /** Volume by named objects: pipe (null = first), mode, outer wall and interval (null = default overlap). */
+    val objectPipeId: String? = null,
+    val objectMode: ObjectVolumeMode = ObjectVolumeMode.ANNULUS,
+    val objectBoundary: AnnulusBoundary = AnnulusBoundary.Automatic,
+    val objectTopMd: Length? = null,
+    val objectBottomMd: Length? = null,
+)
+
+/** Inputs and result of the "volume by named objects" card. */
+data class ObjectVolumeUi(
+    val pipes: List<VolumePipe>,
+    val pipe: VolumePipe,
+    val mode: ObjectVolumeMode,
+    val boundaries: List<AnnulusBoundary>,
+    val boundary: AnnulusBoundary,
+    val topMd: Length,
+    val bottomMd: Length,
+    val result: VolumeBreakdown,
 )
 
 data class WellCalcUiState(
@@ -55,6 +79,7 @@ data class WellCalcUiState(
     val fluidTopMd: Length? = null,
     /** Equivalent density at the target, referenced to RKB. */
     val equivalentDensity: Density? = null,
+    val objectVolume: ObjectVolumeUi? = null,
 )
 
 sealed interface WellCalcEvent {
@@ -66,6 +91,12 @@ sealed interface WellCalcEvent {
     data class SetIncludeRathole(val include: Boolean) : WellCalcEvent
     data class SetIntervalTop(val md: Length) : WellCalcEvent
     data class SetIntervalBottom(val md: Length) : WellCalcEvent
+    data class SetCasedHoleExcess(val percent: Double) : WellCalcEvent
+    data class SelectObjectPipe(val pipeId: String) : WellCalcEvent
+    data class SelectObjectMode(val mode: ObjectVolumeMode) : WellCalcEvent
+    data class SelectObjectBoundary(val boundary: AnnulusBoundary) : WellCalcEvent
+    data class SetObjectTop(val md: Length) : WellCalcEvent
+    data class SetObjectBottom(val md: Length) : WellCalcEvent
 }
 
 /**
@@ -79,6 +110,7 @@ class WellCalculationsViewModel(
 
     private val calculations = WellCalculations()
     private val volumes = WellVolumeCalculator()
+    private val objectVolumes = ObjectVolumeCalculator(volumes)
     private val project = MutableStateFlow<WellProject?>(null)
     private val inputs = MutableStateFlow(WellCalcInputs())
     private val loadError = MutableStateFlow<String?>(null)
@@ -113,6 +145,13 @@ class WellCalculationsViewModel(
             is WellCalcEvent.SetIncludeRathole -> i.copy(includeRathole = event.include)
             is WellCalcEvent.SetIntervalTop -> i.copy(intervalTopMd = event.md)
             is WellCalcEvent.SetIntervalBottom -> i.copy(intervalBottomMd = event.md)
+            is WellCalcEvent.SetCasedHoleExcess -> i.copy(casedHoleExcessPercent = event.percent)
+            // A new pipe, mode or outer wall resets the interval to its default overlap.
+            is WellCalcEvent.SelectObjectPipe -> i.copy(objectPipeId = event.pipeId, objectBoundary = AnnulusBoundary.Automatic, objectTopMd = null, objectBottomMd = null)
+            is WellCalcEvent.SelectObjectMode -> i.copy(objectMode = event.mode, objectTopMd = null, objectBottomMd = null)
+            is WellCalcEvent.SelectObjectBoundary -> i.copy(objectBoundary = event.boundary, objectTopMd = null, objectBottomMd = null)
+            is WellCalcEvent.SetObjectTop -> i.copy(objectTopMd = event.md)
+            is WellCalcEvent.SetObjectBottom -> i.copy(objectBottomMd = event.md)
         }
     }
 
@@ -122,6 +161,7 @@ class WellCalculationsViewModel(
         val state = input.completionState?.takeIf { it in available } ?: available.lastOrNull()
         val policy = CementExcessPolicy(
             openHoleExcessFraction = (input.openHoleExcessPercent / 100.0).coerceIn(0.0, CementExcessPolicy.MAX_EXCESS),
+            casedHoleExcessFraction = (input.casedHoleExcessPercent / 100.0).coerceIn(0.0, CementExcessPolicy.MAX_EXCESS),
             includeRathole = input.includeRathole,
         )
         val report = calculations.report(well, state, policy)
@@ -141,6 +181,7 @@ class WellCalculationsViewModel(
         } else {
             null
         }
+        val objectVolume = objectVolumeUi(geometry, input)
         return WellCalcUiState(
             loading = false,
             project = p,
@@ -154,6 +195,19 @@ class WellCalculationsViewModel(
             hydrostaticTargetMd = target,
             fluidTopMd = top,
             equivalentDensity = hydro?.let { HydrostaticCalculator.equivalentDensityAt(ctx, it.totalPressure, it.targetMd) },
+            objectVolume = objectVolume,
         )
+    }
+
+    private fun objectVolumeUi(geometry: WellboreGeometry, input: WellCalcInputs): ObjectVolumeUi? {
+        val pipes = objectVolumes.pipes(geometry)
+        val pipe = pipes.firstOrNull { it.id == input.objectPipeId } ?: pipes.firstOrNull() ?: return null
+        val boundaries = objectVolumes.boundaries(geometry, pipe)
+        val boundary = input.objectBoundary.takeIf { it in boundaries } ?: AnnulusBoundary.Automatic
+        val default = objectVolumes.defaultInterval(geometry, pipe, input.objectMode, boundary) ?: (pipe.top to pipe.bottom)
+        val top = input.objectTopMd ?: default.first
+        val bottom = input.objectBottomMd ?: default.second
+        val result = objectVolumes.calculate(geometry, pipe.id, input.objectMode, boundary, top, bottom)
+        return ObjectVolumeUi(pipes, pipe, input.objectMode, boundaries, boundary, top, bottom, result)
     }
 }

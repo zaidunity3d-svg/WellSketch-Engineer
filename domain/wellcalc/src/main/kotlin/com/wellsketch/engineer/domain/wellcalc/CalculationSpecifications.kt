@@ -88,6 +88,14 @@ object WellCalculationCatalog {
             references = listOf("Annular capacity = π/4 · (D² − d²)", GEOMETRY, UNITS),
         ),
         CalculationSpecification(
+            "object-volume", "Volume by string (inside / between strings)", CalculationCategory.CAPACITY,
+            "Volume inside a chosen pipe, or in the annulus between a chosen pipe and a chosen outer casing or the open hole, " +
+                "over an exact MD interval (HTML v0.9 volume calculator). Cross-checked against v0.9 on a synthetic well.",
+            listOf("Pipe", "Outer wall", "MD interval"), listOf("Interval volume", "Average capacity", "Segments"),
+            status = CalculationStatus.IMPLEMENTED_PENDING_VALIDATION, version = ObjectVolumeCalculator.VERSION,
+            references = listOf("Σ π/4 · (D² − d²) · ΔL; inside Σ π/4 · ID² · ΔL", GEOMETRY, UNITS),
+        ),
+        CalculationSpecification(
             "displacement", "Pipe displacement", CalculationCategory.DISPLACEMENT,
             "Open-end (steel) and closed-end displacement of strings run into the well (plain pipe body).",
             listOf("OD", "ID", "Length"), listOf("Open-end displacement", "Closed-end displacement"),

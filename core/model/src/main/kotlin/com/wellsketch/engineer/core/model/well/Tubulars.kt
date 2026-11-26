@@ -73,6 +73,9 @@ enum class CementStatus(val label: String) {
  * Cement in the annulus outside its casing string between [top] (top of cement) and
  * [bottom] (normally the shoe). The outer boundary (open hole or the previous casing) is
  * resolved geometrically by the schematic and calculation layers, not stored here.
+ *
+ * [tailTop], when recorded, splits the column into a lead slurry ([top] to [tailTop]) and a
+ * tail slurry ([tailTop] to [bottom]), as in the HTML v0.9 cementing program.
  */
 @Serializable
 data class CementSheath(
@@ -81,6 +84,7 @@ data class CementSheath(
     val status: CementStatus,
     val description: String? = null,
     val provenance: DataProvenance,
+    val tailTop: MeasuredDepth? = null,
 )
 
 /**

@@ -134,6 +134,18 @@ internal fun LazyListScope.wellStructureEditorItems(
                     val cement = s.cement
                     if (cement != null) {
                         DepthField("Top of cement MD", ctx.canonical(cement.top), f, { v -> edit { w -> WellEdits.setTopOfCement(w, s.id, md(v)) } })
+                        val tailTop = cement.tailTop
+                        if (tailTop != null) {
+                            DepthField("Tail slurry top MD", ctx.canonical(tailTop), f, { v -> edit { w -> WellStructureEdits.setCementTailTop(w, s.id, md(v)) } })
+                            TextButton(onClick = { edit { w -> WellStructureEdits.setCementTailTop(w, s.id, null) } }) { Text("One slurry (no lead / tail)") }
+                        } else {
+                            TextButton(onClick = {
+                                // Default split: tail over the lower third of the column.
+                                val toc = ctx.canonical(cement.top)
+                                val boc = ctx.canonical(cement.bottom)
+                                edit { w -> WellStructureEdits.setCementTailTop(w, s.id, md(toc + (boc - toc) * (2.0 / 3.0))) }
+                            }) { Text("+ Split lead / tail") }
+                        }
                         TextButton(onClick = { edit { w -> WellStructureEdits.setCement(w, s.id, null) } }) { Text("Remove cement") }
                     } else {
                         TextButton(onClick = {

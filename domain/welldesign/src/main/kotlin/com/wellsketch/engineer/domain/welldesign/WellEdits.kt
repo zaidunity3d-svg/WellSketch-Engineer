@@ -45,7 +45,10 @@ object WellEdits {
         val target = well.casingStrings.firstOrNull { it.id == stringId } ?: return EditOutcome.Rejected("Unknown casing string")
         val cement = target.cement ?: return EditOutcome.Rejected("String has no cement interval")
         if (toc.value < Length.ZERO) return EditOutcome.Rejected("Top of cement must not be negative")
-        val updated = target.copy(cement = cement.copy(top = toc))
+        // A lead/tail split that would end up above the new TOC is dropped.
+        val ctx = com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext(well)
+        val tail = cement.tailTop?.takeIf { ctx.canonical(it) > ctx.canonical(toc) }
+        val updated = target.copy(cement = cement.copy(top = toc, tailTop = tail))
         return EditOutcome.Applied(well.copy(casingStrings = well.casingStrings.map { if (it.id == stringId) updated else it }))
     }
 

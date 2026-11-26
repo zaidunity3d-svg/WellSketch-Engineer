@@ -31,6 +31,8 @@ import com.wellsketch.engineer.core.engineering.volumes.DiameterBasis
 import com.wellsketch.engineer.core.engineering.volumes.VolumeBreakdown
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.UnitSystem
+import com.wellsketch.engineer.core.model.units.VolumePerLength
+import com.wellsketch.engineer.core.ui.components.ChoiceField
 import com.wellsketch.engineer.core.ui.components.DepthField
 import com.wellsketch.engineer.core.ui.components.IssueList
 import com.wellsketch.engineer.core.ui.components.LabeledValue
@@ -43,6 +45,7 @@ import com.wellsketch.engineer.core.ui.format.UnitFormatter
 import com.wellsketch.engineer.domain.wellcalc.CalculationStatus
 import com.wellsketch.engineer.domain.wellcalc.CementJobVolumes
 import com.wellsketch.engineer.domain.wellcalc.HydrostaticCalculator
+import com.wellsketch.engineer.domain.wellcalc.ObjectVolumeMode
 import com.wellsketch.engineer.domain.wellcalc.WellCalculationCatalog
 
 /**
@@ -134,6 +137,10 @@ private fun WellCalcContent(state: WellCalcUiState, f: UnitFormatter, onEvent: (
             }
         }
 
+        state.objectVolume?.let { ov ->
+            item { ObjectVolumeCard(ov, f, ref, onEvent) }
+        }
+
         // --- Tubulars --------------------------------------------------------------------
         item { Text("Tubular geometry (per length)", style = MaterialTheme.typography.titleMedium) }
         items(report.tubulars, key = { it.sourceId }) { row ->
@@ -189,6 +196,11 @@ private fun WellCalcContent(state: WellCalcUiState, f: UnitFormatter, onEvent: (
                     onValueChange = { onEvent(WellCalcEvent.SetOpenHoleExcess(it)) },
                     isValid = { it in 0.0..(com.wellsketch.engineer.domain.wellcalc.CementExcessPolicy.MAX_EXCESS * 100.0) },
                 )
+                NumberField(
+                    "Cased-hole excess", state.inputs.casedHoleExcessPercent, "%", decimals = 0,
+                    onValueChange = { onEvent(WellCalcEvent.SetCasedHoleExcess(it)) },
+                    isValid = { it in 0.0..(com.wellsketch.engineer.domain.wellcalc.CementExcessPolicy.MAX_EXCESS * 100.0) },
+                )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(
                         selected = state.inputs.includeRathole,
@@ -196,7 +208,10 @@ private fun WellCalcContent(state: WellCalcUiState, f: UnitFormatter, onEvent: (
                         label = { Text("Include rathole") },
                     )
                 }
-                Text("Cased-hole intervals use no excess.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Open-hole excess applies to annulus against the bit size; cased-hole excess to annulus inside a previous casing (normally 0 %).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         items(report.cementJobs, key = { "cement:" + it.string.id }) { job -> CementCard(job, f, ref) }
@@ -213,6 +228,45 @@ private fun WellCalcContent(state: WellCalcUiState, f: UnitFormatter, onEvent: (
                 }
             }
         }
+    }
+}
+
+/**
+ * Volume by named objects (HTML v0.9 "Volume calculator"): inside a chosen pipe, or the
+ * annulus between it and a chosen outer string or the open hole, e.g. for a cement job
+ * between the 9-5/8 in and 13-3/8 in casing.
+ */
+@Composable
+private fun ObjectVolumeCard(ov: ObjectVolumeUi, f: UnitFormatter, ref: String, onEvent: (WellCalcEvent) -> Unit) {
+    SectionCard("Volume by string (inside / between strings)") {
+        ChoiceField(
+            "Calculation", ObjectVolumeMode.entries, ov.mode, { it.label },
+            { onEvent(WellCalcEvent.SelectObjectMode(it)) },
+        )
+        ChoiceField(
+            "Pipe", ov.pipes, ov.pipe,
+            { "${it.name} – ${f.nominalSize(it.outerDiameter)} (ID ${f.diameter(it.innerDiameter)})" },
+            { onEvent(WellCalcEvent.SelectObjectPipe(it.id)) },
+        )
+        if (ov.mode == ObjectVolumeMode.ANNULUS) {
+            ChoiceField(
+                "Outer wall", ov.boundaries, ov.boundary, { it.label },
+                { onEvent(WellCalcEvent.SelectObjectBoundary(it)) },
+            )
+        }
+        DepthField("Top (MD $ref)", ov.topMd, f, { onEvent(WellCalcEvent.SetObjectTop(it)) })
+        DepthField("Bottom (MD $ref)", ov.bottomMd, f, { onEvent(WellCalcEvent.SetObjectBottom(it)) })
+        val length = ov.bottomMd - ov.topMd
+        if (ov.result.segments.isNotEmpty() && length.meters > 0.0) {
+            LabeledValue("Length", f.depth(length))
+            LabeledValue("Average capacity", f.capacity(VolumePerLength(ov.result.total.cubicMeters / length.meters)))
+        }
+        VolumeBreakdownDetails(ov.result, f, showSegments = true)
+        Text(
+            "Σ π/4 × (outer ID² − pipe OD²) × length for the annulus, π/4 × ID² × length inside. Nominal body dimensions; " +
+                "couplings and tapered strings are not included.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -245,6 +299,8 @@ private fun CementCard(job: CementJobVolumes, f: UnitFormatter, ref: String) {
     SectionCard("Cement – ${job.string.name}") {
         Text("Annulus", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
         VolumeBreakdownDetails(job.annulus, f, showSegments = true)
+        job.lead?.let { VolumeSummary("Lead slurry", it, f) }
+        job.tail?.let { VolumeSummary("Tail slurry", it, f) }
         LabeledValue("Shoe track", job.shoeTrack?.let { "${f.volume(it.volume)} (${f.depth(it.length)})" } ?: "Not included (float collar not recorded)")
         LabeledValue(
             "Rathole",

@@ -1,13 +1,18 @@
 package com.wellsketch.engineer.core.engineering.validation
 
+import com.wellsketch.engineer.core.engineering.catalog.TubularCatalog
+import com.wellsketch.engineer.core.engineering.catalog.TubularKind
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
 import com.wellsketch.engineer.core.engineering.trajectory.TrajectorySource
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue.Severity
+import com.wellsketch.engineer.core.model.datum.DepthReference
+import com.wellsketch.engineer.core.model.datum.MeasuredDepth
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.well.CasingString
 import com.wellsketch.engineer.core.model.well.ComponentMounting
 import com.wellsketch.engineer.core.model.well.Completion
 import com.wellsketch.engineer.core.model.well.TubingConfiguration
+import com.wellsketch.engineer.core.model.well.TubularSpec
 
 /**
  * Geometric consistency checks on well input data. These checks compare entered geometry
@@ -75,7 +80,26 @@ class WellGeometryValidator {
                 )
             }
         }
-        sections.sortedBy { it.second }.zipWithNext().forEach { (a, b) ->
+        val sorted = sections.sortedBy { it.second }
+        // First hole section should start at ground level (HTML v0.9 QA rule); offshore, GL is the seabed.
+        val gl = ctx.canonical(groundLevelMd(ctx))
+        sorted.firstOrNull()?.let { (s, top, _) ->
+            if (top > gl + Length.meters(0.001)) {
+                issues += ValidationIssue(
+                    Severity.WARNING, "HOLE_FIRST_TOP",
+                    "First hole section '${s.name}' starts below ground level: no hole is recorded from GL to its top.",
+                    listOf(s.id),
+                )
+            }
+        }
+        sorted.zipWithNext().forEach { (a, b) ->
+            if (b.second > a.third + Length.meters(0.001)) {
+                issues += ValidationIssue(
+                    Severity.ERROR, "HOLE_GAP",
+                    "Gap between hole sections '${a.first.name}' and '${b.first.name}': no hole is recorded in between.",
+                    listOf(a.first.id, b.first.id),
+                )
+            }
             if (b.second < a.third - Length.meters(0.001)) {
                 issues += ValidationIssue(
                     Severity.ERROR, "HOLE_OVERLAP",
@@ -119,6 +143,7 @@ class WellGeometryValidator {
                     listOf(s.id, holeAtShoe.id),
                 )
             }
+            checkTubularRecord(s.name, s.id, s.spec, TubularKind.CASING, issues)
             s.cement?.let { c ->
                 val toc = ctx.canonical(c.top)
                 val boc = ctx.canonical(c.bottom)
@@ -138,6 +163,14 @@ class WellGeometryValidator {
                         Severity.WARNING, "CEMENT_ABOVE_TOP",
                         "'${s.name}': top of cement is above the top of the string.", listOf(s.id),
                     )
+                }
+                c.tailTop?.let(ctx::canonical)?.let { tail ->
+                    if (!(tail > toc && tail < boc)) {
+                        issues += ValidationIssue(
+                            Severity.WARNING, "CEMENT_TAIL_OUTSIDE",
+                            "'${s.name}': tail slurry top is not between the top and bottom of cement.", listOf(s.id),
+                        )
+                    }
                 }
             }
             if (s.isLiner) checkLinerOverlap(ctx, s, strings, issues)
@@ -177,10 +210,17 @@ class WellGeometryValidator {
             val overlapBottom = minOf(ctx.canonical(a.shoe.depth), ctx.canonical(b.shoe.depth))
             if (overlapBottom <= overlapTop) continue
             val (outer, inner) = if (a.spec.outerDiameter >= b.spec.outerDiameter) a to b else b to a
+            val drift = outer.spec.driftDiameter
             if (inner.spec.outerDiameter >= outer.spec.innerDiameter) {
                 issues += ValidationIssue(
                     Severity.ERROR, "CASING_NESTING",
                     "'${inner.name}' OD does not fit inside '${outer.name}' ID where they overlap.",
+                    listOf(inner.id, outer.id),
+                )
+            } else if (drift != null && inner.spec.outerDiameter >= drift) {
+                issues += ValidationIssue(
+                    Severity.WARNING, "CASING_DRIFT",
+                    "'${inner.name}' OD is not smaller than the drift of '${outer.name}': it may not pass. Check connection ODs.",
                     listOf(inner.id, outer.id),
                 )
             }
@@ -213,6 +253,7 @@ class WellGeometryValidator {
                     "Tubing OD does not fit inside '${host.name}' ID.", listOf(tubing.id, host.id),
                 )
             }
+            checkTubularRecord(tubing.name, tubing.id, tubing.spec, TubularKind.TUBING, issues)
         }
         for (c in completion.components) {
             val top = ctx.canonical(c.top)
@@ -251,6 +292,31 @@ class WellGeometryValidator {
             }
         }
     }
+
+    /**
+     * Catalogue checks from the HTML v0.9 QA list: a tubing record must not be used for casing
+     * (or the reverse), and grade / connection should be chosen. A pipe with no catalogue
+     * record is allowed (field-measured or user dimensions) and only noted.
+     */
+    private fun checkTubularRecord(name: String, id: String, spec: TubularSpec, expected: TubularKind, issues: MutableList<ValidationIssue>) {
+        val record = spec.catalogItemId?.let(TubularCatalog::byId)
+        if (spec.catalogItemId != null && record != null && record.kind != expected) {
+            issues += ValidationIssue(
+                Severity.ERROR, "TUBULAR_CATALOGUE_KIND",
+                "'$name' uses a ${record.kind.name.lowercase()} catalogue record; choose a ${expected.name.lowercase()} size.",
+                listOf(id),
+            )
+        }
+        if (record != null && (spec.grade == null || spec.connection == null)) {
+            issues += ValidationIssue(
+                Severity.INFO, "TUBULAR_GRADE_CONNECTION",
+                "'$name': ${listOfNotNull("grade".takeIf { spec.grade == null }, "connection".takeIf { spec.connection == null }).joinToString(" and ")} not selected.",
+                listOf(id),
+            )
+        }
+    }
+
+    private fun groundLevelMd(ctx: WellGeometryContext) = MeasuredDepth(ctx.well.datums.rkbAboveGroundLevel, DepthReference.Rkb)
 
     private fun deepestMd(ctx: WellGeometryContext): Length? =
         (ctx.well.holeSections.map { ctx.canonical(it.bottom) } +

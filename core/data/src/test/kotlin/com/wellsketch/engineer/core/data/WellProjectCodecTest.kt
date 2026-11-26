@@ -33,6 +33,22 @@ class WellProjectCodecTest {
     }
 
     @Test
+    fun cementTailTopRoundTripsAndOldDocumentsWithoutItDecode() {
+        val project = SyntheticDemoProjects.vertical()
+        val cemented = project.well.casingStrings.first { it.cement != null }
+        val c = cemented.cement!!
+        val tail = c.top.copy(value = c.top.value + (c.bottom.value - c.top.value) * 0.5)
+        val withTail = project.copy(
+            well = project.well.copy(casingStrings = project.well.casingStrings.map { if (it.id == cemented.id) it.copy(cement = c.copy(tailTop = tail)) else it }),
+        )
+        val decoded = WellProjectCodec.decode(WellProjectCodec.encode(withTail))
+        assertEquals(tail, decoded.well.casingStrings.single { it.id == cemented.id }.cement!!.tailTop)
+        // a document written before the lead/tail split has no "tailTop" key
+        assertTrue("tailTop" !in WellProjectCodec.encode(project))
+        assertNull(WellProjectCodec.decode(WellProjectCodec.encode(project)).well.casingStrings.single { it.id == cemented.id }.cement!!.tailTop)
+    }
+
+    @Test
     fun newerSchemaVersionIsRejectedInsteadOfTruncated() {
         val payload = WellProjectCodec.encode(SyntheticDemoProjects.vertical())
             .replace("\"schemaVersion\":1", "\"schemaVersion\":99")
