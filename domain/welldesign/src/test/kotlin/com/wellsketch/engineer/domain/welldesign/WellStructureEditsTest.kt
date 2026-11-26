@@ -178,6 +178,9 @@ class WellStructureEditsTest {
             .apply { WellStructureEdits.setFormationLithology(it, "fr", Lithology.LIMESTONE) }
             .apply { WellStructureEdits.setFormationName(it, "fr", "Target") }
         assertEquals(listOf("Formation 1", "Formation 2", "Target"), w.formations.map { it.name })
+        // a top entered below GL sorts with tops stored from RKB (GL is 11.1 m below RKB)
+        val mixed = w.apply { WellStructureEdits.addFormation(it, "Middle", Lithology.SHALE, TrueVerticalDepth.gl(Length.meters(1000.0))) }
+        assertEquals(listOf("Formation 1", "Formation 2", "Middle", "Target"), mixed.formations.map { it.name })
         assertEquals(Lithology.LIMESTONE, w.formations.last().lithology)
         assertEquals(2, w.apply { WellStructureEdits.removeFormation(it, "fr") }.formations.size)
     }

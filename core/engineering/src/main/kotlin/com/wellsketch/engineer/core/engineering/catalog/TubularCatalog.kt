@@ -77,6 +77,9 @@ object TubularCatalog {
     val CASING_CONNECTIONS: List<String> = listOf("STC", "LTC", "BTC", "Premium (OEM check)", "Other (OEM check)")
     val TUBING_CONNECTIONS: List<String> = listOf("NU", "EU", "Premium (OEM check)", "Other (OEM check)")
 
+    /** Nominal hole (bit) sizes offered for hole sections, largest first (HTML prototype pick-list), in inches. */
+    val BIT_SIZES_IN: List<Double> = listOf(36.0, 30.0, 26.0, 24.0, 22.0, 20.0, 17.5, 16.0, 14.75, 12.25, 9.875, 8.5, 6.125, 6.0)
+
     private fun row(
         id: String, kind: TubularKind, od: Double, weight: Double, wall: Double, idIn: Double, drift: Double?, finish: String?, source: String,
     ) = TubularCatalogEntry(id, kind, od, weight, wall, idIn, drift, finish, source)

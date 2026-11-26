@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -37,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,8 +51,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.wellsketch.engineer.core.model.project.WellProjectSummary
 import com.wellsketch.engineer.core.model.units.UnitSystem
 import com.wellsketch.engineer.core.ui.components.NoticeCard
+import com.wellsketch.engineer.core.ui.format.UnitFormatter
 
 @Composable
 fun HomeScreen(
@@ -64,6 +68,29 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val active = state.activeProject
+    val formatter = remember(unitSystem) { UnitFormatter(unitSystem) }
+    var showNewWell by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf<WellProjectSummary?>(null) }
+    if (showNewWell) {
+        NewWellDialog(
+            formatter = formatter,
+            onDismiss = { showNewWell = false },
+            onCreate = { name, rkb, gl, location ->
+                showNewWell = false
+                viewModel.createWell(name, rkb, gl, location, onCreated = onOpenWellDesign)
+            },
+        )
+    }
+    confirmDelete?.let { project ->
+        DeleteProjectDialog(
+            projectName = project.name,
+            onDismiss = { confirmDelete = null },
+            onConfirm = {
+                confirmDelete = null
+                viewModel.delete(project.id)
+            },
+        )
+    }
     Scaffold { padding ->
         Column(
             Modifier
@@ -73,7 +100,13 @@ fun HomeScreen(
         ) {
             Header()
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ProjectSelector(state, onSelect = viewModel::selectProject)
+                ProjectSelector(
+                    state,
+                    onSelect = viewModel::selectProject,
+                    onNewWell = { showNewWell = true },
+                    onDuplicate = { active?.let { viewModel.duplicate(it.id) } },
+                    onDelete = { confirmDelete = active },
+                )
                 Text("Engineering modules", style = MaterialTheme.typography.titleMedium)
                 BoxWithConstraints(Modifier.fillMaxWidth()) {
                     val columns = if (maxWidth >= 840.dp) 3 else if (maxWidth >= 560.dp) 2 else 1
@@ -137,7 +170,13 @@ private fun Header() {
 }
 
 @Composable
-private fun ProjectSelector(state: HomeUiState, onSelect: (String) -> Unit) {
+private fun ProjectSelector(
+    state: HomeUiState,
+    onSelect: (String) -> Unit,
+    onNewWell: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
         Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -145,11 +184,19 @@ private fun ProjectSelector(state: HomeUiState, onSelect: (String) -> Unit) {
             val active = state.activeProject
             when {
                 state.loading -> Text("Loading projects…")
-                active == null -> Text("No projects yet. Demo projects are created on first launch.")
+                active == null -> Text("No projects yet. Create a new well to start.")
                 else -> {
                     Text(active.name, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text("Well ${active.wellName}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Well ${active.wellName}" + if (active.isSyntheticDemo) " · synthetic demo" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(onClick = onNewWell) { Text("+ New well") }
+                OutlinedButton(onClick = onDuplicate, enabled = active != null) { Text("Duplicate") }
+                TextButton(onClick = onDelete, enabled = active != null) { Text("Delete") }
             }
             Box {
                 OutlinedButton(onClick = { expanded = true }, enabled = state.projects.isNotEmpty()) {

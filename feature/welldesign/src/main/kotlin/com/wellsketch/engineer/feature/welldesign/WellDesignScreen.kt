@@ -42,16 +42,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wellsketch.engineer.core.engineering.geometry.WellGeometryContext
-import com.wellsketch.engineer.core.model.datum.MeasuredDepth
-import com.wellsketch.engineer.core.model.datum.TrueVerticalDepth
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.UnitSystem
-import com.wellsketch.engineer.core.model.well.TubingConfiguration
 import com.wellsketch.engineer.core.model.well.findObject
 import com.wellsketch.engineer.core.ui.components.BREAKDOWN_PENDING_NOTE
 import com.wellsketch.engineer.core.ui.components.DepthField
@@ -294,57 +290,12 @@ private fun LazyListScope.wellDataItems(
                 LabeledValue("TVD at TD", "${f.depth(ctx.tvdBelowGroundLevel(Length.meters(td)))} below GL")
             }
         }
-        item {
-            SectionCard("Formation tops (TVD below GL)", pad) {
-                well.formations.forEach { formation ->
-                    DepthField(
-                        label = "${formation.name} – ${formation.lithology.label}",
-                        value = ctx.tvdBelowGroundLevel(formation.top),
-                        formatter = f,
-                        onValueChange = { v ->
-                            onEvent(WellDesignEvent.Edit { w -> WellEdits.setFormationTop(w, formation.id, TrueVerticalDepth.gl(v)) })
-                        },
-                    )
-                }
-            }
-        }
-        item {
-            SectionCard("Hole sections", pad) {
-                well.holeSections.forEach { h ->
-                    LabeledValue(h.name, "${f.depth(ctx.canonical(h.top))} – ${f.depth(ctx.canonical(h.bottom))}")
-                }
-            }
-        }
-        item {
-            SectionCard("Casing strings & liners (MD ${ref.shortLabel})", pad) {
-                well.casingStrings.forEach { s ->
-                    Text(s.name, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
-                    LabeledValue("OD / ID", "${f.diameter(s.spec.outerDiameter)} / ${f.diameter(s.spec.innerDiameter)}")
-                    LabeledValue("Top", f.depth(ctx.canonical(s.top)))
-                    DepthField("Shoe MD", ctx.canonical(s.shoe.depth), f, { v ->
-                        onEvent(WellDesignEvent.Edit { w -> WellEdits.setCasingShoe(w, s.id, MeasuredDepth(v, ref)) })
-                    })
-                    s.cement?.let { c ->
-                        DepthField("Top of cement MD", ctx.canonical(c.top), f, { v ->
-                            onEvent(WellDesignEvent.Edit { w -> WellEdits.setTopOfCement(w, s.id, MeasuredDepth(v, ref)) })
-                        })
-                    }
-                    HorizontalDivider()
-                }
-            }
-        }
-        item {
-            SectionCard("Completion – ${snapshot.completionState.label}", pad) {
-                when (val tubing = completion?.tubing) {
-                    null -> Text("No completion recorded for this state.", style = MaterialTheme.typography.bodySmall)
-                    is TubingConfiguration.ExplicitlyNone -> LabeledValue("Production tubing", "None – ${tubing.reason}")
-                    is TubingConfiguration.Installed -> {
-                        LabeledValue("Production tubing", tubing.tubing.name)
-                        LabeledValue("OD / ID", "${f.diameter(tubing.tubing.spec.outerDiameter)} / ${f.diameter(tubing.tubing.spec.innerDiameter)}")
-                        DepthField("End of tubing MD", ctx.canonical(tubing.tubing.endOfTubing), f, { v ->
-                            onEvent(WellDesignEvent.Edit { w -> WellEdits.setEndOfTubing(w, snapshot.completionState, MeasuredDepth(v, ref)) })
-                        })
-                    }
+        // Editable structure: formations, hole sections, casing strings / liners, tubing.
+        wellStructureEditorItems(well, snapshot.completionState, ctx, f, onEvent, pad, snapshot.showsCompletion)
+        if (snapshot.showsCompletion) item {
+            SectionCard("Completion equipment – ${snapshot.completionState.label}", pad) {
+                if (completion == null || (completion.components.isEmpty() && completion.perforations.isEmpty())) {
+                    Text("No completion equipment recorded for this state.", style = MaterialTheme.typography.bodySmall)
                 }
                 completion?.components?.forEach { c ->
                     LabeledValue(c.name, f.depth(ctx.canonical(c.top)))

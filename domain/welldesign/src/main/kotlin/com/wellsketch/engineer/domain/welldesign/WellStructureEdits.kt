@@ -48,7 +48,13 @@ object WellStructureEdits {
         if (top.value < Length.ZERO) return EditOutcome.Rejected("Top depth must not be negative")
         if (well.formations.any { it.id == id }) return EditOutcome.Rejected("Duplicate formation id")
         val added = FormationTop(id = id, name = name.trim(), top = top, lithology = lithology, provenance = user())
-        return EditOutcome.Applied(well.copy(formations = (well.formations + added).sortedBy { it.top.value.meters }))
+        return EditOutcome.Applied(well.copy(formations = (well.formations + added).sortedBy { tvdFromRkb(well, it.top) }))
+    }
+
+    /** TVD in metres below RKB, so tops stored from GL and from RKB sort together. */
+    private fun tvdFromRkb(well: Well, tvd: TrueVerticalDepth): Double = when (tvd.reference) {
+        com.wellsketch.engineer.core.model.datum.DepthReference.GroundLevel -> tvd.value.meters + groundLevelMd(well).value.meters
+        else -> tvd.value.meters
     }
 
     fun removeFormation(well: Well, formationId: String): EditOutcome {

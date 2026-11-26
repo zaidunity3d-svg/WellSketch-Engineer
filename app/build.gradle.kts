@@ -31,6 +31,7 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:database"))
     implementation(project(":core:ui"))
+    implementation(project(":domain:welldesign"))
     implementation(project(":feature:welldesign"))
     implementation(project(":feature:wellcalc"))
     implementation(project(":feature:ctcalc"))
