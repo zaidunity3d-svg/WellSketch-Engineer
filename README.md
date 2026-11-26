@@ -87,6 +87,7 @@ Dependency direction: `feature → domain → core:schematic → core:engineerin
   This is a conservative, mutually compatible set; upgrading to AGP 9.x is a planned follow-up.
 - **APK/AAB packaging of `:app` is blocked** by a guard in the root `build.gradle.kts` until the owner approves an APK build. Compilation and unit tests are not affected. After approval the owner can run e.g. `./gradlew :app:assembleDebug -Pwellsketch.ownerApprovedApkBuild=true`.
 - CI (`.github/workflows/ci.yml`) runs `./gradlew test` only (compiles all modules and runs all unit tests). It never assembles, signs or uploads an APK.
+- Owner-approved test APKs: `.github/workflows/build-apk.yml` runs only on pushes to `apk/**` branches, which are created after the owner says "ابني التطبيق". It runs the unit tests, assembles the debug APK with the approval flag, then installs it on an emulator and runs a smoke test (launch, intro and home screenshots, 3000 random UI events with a fixed seed; fails on any crash, ANR or fatal exception). No signing keys are used or stored.
 - Run tests locally: `./gradlew test`.
 
 ## Milestone 1 status

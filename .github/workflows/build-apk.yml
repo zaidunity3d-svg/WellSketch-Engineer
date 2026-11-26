@@ -1,0 +1,77 @@
+# Test APK build — owner-approved only.
+# Project policy (CLAUDE.md rule 4): an APK is built only after the owner explicitly says
+# "ابني التطبيق". This workflow runs only on pushes to apk/** branches, which are created
+# for such an approval; it never runs on main, pull requests or feature branches.
+name: Build test APK (owner-approved)
+
+on:
+  push:
+    branches:
+      - "apk/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew test --continue --stacktrace --no-configuration-cache
+
+      - name: Assemble debug APK (owner-approved)
+        run: ./gradlew :app:assembleDebug -Pwellsketch.ownerApprovedApkBuild=true --stacktrace --no-configuration-cache
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wellsketch-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # Installs the APK on an emulator, launches it, sends random UI events and fails on any
+  # crash, ANR or fatal exception. Screenshots and logs are uploaded for review.
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: wellsketch-debug-apk
+          path: apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/apk-smoke-test.sh apk smoke
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-results
+          path: smoke/
+          if-no-files-found: ignore
+          retention-days: 30
