@@ -9,8 +9,8 @@ android {
 
     defaultConfig {
         applicationId = "com.wellsketch.engineer"
-        versionCode = 2
-        versionName = "0.1.1-milestone1"
+        versionCode = 3
+        versionName = "0.2.0"
     }
 
     androidResources {

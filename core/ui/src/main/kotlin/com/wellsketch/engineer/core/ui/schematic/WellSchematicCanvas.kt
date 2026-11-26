@@ -169,6 +169,7 @@ fun WellSchematicCanvas(
         if (p.scene.trajectorySource == TrajectorySource.ASSUMED_VERTICAL) {
             label(textMeasurer, "No survey: vertical path assumed", p.wellLeft.toFloat(), size.height - 14.dp.toPx(), 220.dp.toPx(), Color(0xFF8A5A00))
         }
+        drawWatermark(textMeasurer)
     }
 }
 

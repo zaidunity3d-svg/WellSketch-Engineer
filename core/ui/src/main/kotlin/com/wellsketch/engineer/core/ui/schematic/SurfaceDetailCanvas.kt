@@ -122,6 +122,7 @@ fun SurfaceDetailCanvas(
         }
         val gl = textMeasurer.measure(AnnotatedString("GL"), style = TextStyle(fontSize = 10.sp, color = SchematicPalette.paper))
         drawText(gl, topLeft = Offset(4.dp.toPx(), groundY + 2.dp.toPx()))
+        drawWatermark(textMeasurer)
     }
 }
 

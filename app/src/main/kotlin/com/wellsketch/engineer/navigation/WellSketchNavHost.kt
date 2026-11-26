@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -21,6 +22,7 @@ import com.wellsketch.engineer.feature.welldesign.WellDesignScreen
 import com.wellsketch.engineer.feature.welldesign.WellDesignViewModel
 import com.wellsketch.engineer.home.HomeScreen
 import com.wellsketch.engineer.home.HomeViewModel
+import com.wellsketch.engineer.intro.IntroScreen
 
 @Composable
 fun WellSketchNavHost(container: AppContainer) {
@@ -30,10 +32,20 @@ fun WellSketchNavHost(container: AppContainer) {
     // Screen changes are instant: this engineering app avoids animated transitions entirely.
     NavHost(
         navController = navController,
-        startDestination = HomeRoute,
+        startDestination = IntroRoute,
         enterTransition = { EnterTransition.None },
         exitTransition = { ExitTransition.None },
     ) {
+        composable<IntroRoute> {
+            IntroScreen(
+                onFinished = {
+                    // Timer and tap can both fire: leave the intro only once.
+                    if (navController.currentDestination?.hasRoute<IntroRoute>() == true) {
+                        navController.navigate(HomeRoute) { popUpTo<IntroRoute> { inclusive = true } }
+                    }
+                },
+            )
+        }
         composable<HomeRoute> {
             val vm = viewModel { HomeViewModel(container.wellProjects) }
             HomeScreen(
