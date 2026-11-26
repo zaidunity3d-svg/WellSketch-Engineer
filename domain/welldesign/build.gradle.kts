@@ -8,4 +8,5 @@ dependencies {
     api(project(":core:schematic"))
 
     testImplementation(project(":core:data"))
+    testImplementation(project(":domain:wellcalc"))
 }

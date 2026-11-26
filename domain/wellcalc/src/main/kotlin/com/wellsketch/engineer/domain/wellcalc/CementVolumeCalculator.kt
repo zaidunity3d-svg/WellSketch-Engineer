@@ -44,6 +44,10 @@ data class CementJobVolumes(
     /** Inside the string from its top to the float collar (to the shoe when no float collar is recorded). */
     val displacement: VolumeBreakdown,
     val issues: List<ValidationIssue>,
+    /** Lead slurry annulus (TOC to tail top) when a tail top is recorded; [annulus] = lead + tail. */
+    val lead: VolumeBreakdown? = null,
+    /** Tail slurry annulus (tail top to cement bottom) when a tail top is recorded. */
+    val tail: VolumeBreakdown? = null,
 ) {
     val slurryVolume: Volume
         get() = Volume(
@@ -58,7 +62,7 @@ data class CementJobVolumes(
  *
  * - Annulus: string OD to the previous casing ID where covered, otherwise to the bit size,
  *   from the recorded top of cement to the bottom of the cement interval; excess per
- *   [CementExcessPolicy].
+ *   [CementExcessPolicy]. Split into lead and tail at the recorded tail top (1.1.0).
  * - Shoe track: string ID × (shoe − float collar).
  * - Rathole: bit size × (hole-section bottom − shoe), optional.
  * - Displacement: string ID from the string top to the float collar. For a liner the
@@ -78,6 +82,8 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
         val od = string.spec.outerDiameter
 
         // --- Annulus ---------------------------------------------------------------------
+        var lead: VolumeBreakdown? = null
+        var tail: VolumeBreakdown? = null
         val cement = string.cement
         val annulus = if (cement == null) {
             issues += ValidationIssue(Severity.INFO, "CEMENT_NOT_RECORDED", "No cement interval recorded for ${string.name}.", listOf(string.id))
@@ -93,14 +99,33 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
             }
             val top = maxOf(toc, span.top)
             val end = minOf(bottom, span.bottom)
-            val raw = volumes.annulusOutside(geometry, string, top, end)
-            issues += raw.issues
-            VolumeBreakdown(
-                "Annulus",
-                raw.segments.map {
-                    it.copy(excessFraction = if (it.outerBasis == DiameterBasis.BIT_SIZE) policy.openHoleExcessFraction else policy.casedHoleExcessFraction)
-                },
-            )
+            // Lead / tail split (HTML v0.9): the annulus is computed in two pieces at the tail top.
+            val tailTop = cement.tailTop?.let(ctx::canonical)
+            val split = tailTop?.takeIf { it > top && it < end }
+            if (tailTop != null && split == null) {
+                issues += ValidationIssue(
+                    Severity.WARNING, "CEMENT_TAIL_OUTSIDE",
+                    "Tail slurry top of ${string.name} is not between the top and bottom of cement; the whole column is treated as one slurry.",
+                    listOf(string.id),
+                )
+            }
+            fun piece(title: String, a: Length, b: Length): VolumeBreakdown {
+                val raw = volumes.annulusOutside(geometry, string, a, b)
+                issues += raw.issues
+                return VolumeBreakdown(
+                    title,
+                    raw.segments.map {
+                        it.copy(excessFraction = if (it.outerBasis == DiameterBasis.BIT_SIZE) policy.openHoleExcessFraction else policy.casedHoleExcessFraction)
+                    },
+                )
+            }
+            if (split != null) {
+                lead = piece("Lead slurry", top, split)
+                tail = piece("Tail slurry", split, end)
+                VolumeBreakdown("Annulus", lead.segments + tail.segments)
+            } else {
+                piece("Annulus", top, end)
+            }
         }
 
         // --- Shoe track and displacement -------------------------------------------------
@@ -146,10 +171,10 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
             )
         }
 
-        return CementJobVolumes(string, annulus, shoeTrack, rathole, policy.includeRathole && rathole != null, displacement, issues)
+        return CementJobVolumes(string, annulus, shoeTrack, rathole, policy.includeRathole && rathole != null, displacement, issues.distinct(), lead, tail)
     }
 
     companion object {
-        const val VERSION = "1.0.0"
+        const val VERSION = "1.1.0"
     }
 }
