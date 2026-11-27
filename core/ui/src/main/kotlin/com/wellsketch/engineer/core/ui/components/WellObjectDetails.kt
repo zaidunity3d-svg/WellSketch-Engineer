@@ -32,6 +32,7 @@ fun wellObjectDetails(obj: WellObject, ctx: WellGeometryContext, f: UnitFormatte
                     "Shoe" to "${md(s.shoe.depth)} (${s.shoe.type.label})",
                     "Shoe TVD" to "${f.depth(ctx.tvdBelowGroundLevel(ctx.canonical(s.shoe.depth)))} below GL",
                     s.cement?.let { "Cement" to "${md(it.top)} to ${md(it.bottom)} – ${it.status.label}" },
+                    s.runningString?.let { "Running string" to "${f.nominalSize(it.outerDiameter)} (ID ${f.diameter(it.innerDiameter)})" },
                     "Spec data" to s.spec.provenance.status.label,
                 ),
                 s.provenance,
@@ -39,7 +40,12 @@ fun wellObjectDetails(obj: WellObject, ctx: WellGeometryContext, f: UnitFormatte
         }
         is WellObject.Hole -> ObjectDetails(
             obj.value.name,
-            listOf("Bit size (nominal)" to dia(obj.value.bitDiameter), "Top" to md(obj.value.top), "Bottom" to md(obj.value.bottom)),
+            listOfNotNull(
+                "Bit size (nominal)" to dia(obj.value.bitDiameter),
+                obj.value.averageDiameter?.let { "Average hole (caliper)" to dia(it) },
+                "Top" to md(obj.value.top),
+                "Bottom" to md(obj.value.bottom),
+            ),
             obj.value.provenance,
         )
         is WellObject.Tubing -> ObjectDetails(

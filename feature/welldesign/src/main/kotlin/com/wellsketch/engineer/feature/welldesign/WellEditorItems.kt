@@ -26,6 +26,7 @@ import com.wellsketch.engineer.core.model.well.Well
 import com.wellsketch.engineer.core.ui.components.ChoiceField
 import com.wellsketch.engineer.core.ui.components.DepthField
 import com.wellsketch.engineer.core.ui.components.LabeledValue
+import com.wellsketch.engineer.core.ui.components.NumberField
 import com.wellsketch.engineer.core.ui.components.SectionCard
 import com.wellsketch.engineer.core.ui.components.TextEntryField
 import com.wellsketch.engineer.core.ui.components.TubularPicker
@@ -100,6 +101,14 @@ internal fun LazyListScope.wellStructureEditorItems(
                     placeholder = f.nominalSize(h.bitDiameter),
                     onSelect = { bit -> edit { w -> WellStructureEdits.setHoleBitSize(w, h.id, Length.inches(bit)) } },
                 )
+                // Caliper / average hole size: used for open-hole volumes instead of the bit size.
+                NumberField(
+                    "Average hole diameter – caliper (0 = bit size)", h.averageDiameter?.let(f::diameterValue) ?: 0.0, f.diameterUnit, 3,
+                    onValueChange = { v ->
+                        edit { w -> WellStructureEdits.setHoleAverageDiameter(w, h.id, f.diameterFromValue(v).takeIf { it.meters > 0.0 }) }
+                    },
+                    isValid = { it >= 0.0 },
+                )
                 DepthField("Bottom MD", ctx.canonical(h.bottom), f, { v -> edit { w -> WellEdits.setHoleSectionBottom(w, h.id, md(v)) } })
                 TextButton(onClick = { edit { w -> WellStructureEdits.removeHoleSection(w, h.id) } }) { Text("Remove hole section") }
                 HorizontalDivider()
@@ -164,6 +173,34 @@ internal fun LazyListScope.wellStructureEditorItems(
                             edit { w -> WellStructureEdits.setFloatCollar(w, s.id, MeasuredDepth(shoe.value - Length.meters(25.0), shoe.reference)) }
                         }) { Text("+ Add float collar") }
                     }
+                    if (s.isLiner) {
+                        // Drill pipe / tubing the liner is run and cemented on: cement above the liner
+                        // top is around it, and the displacement includes its inside volume.
+                        val runningString = s.runningString
+                        val runningKind = runningString?.let { TubularCatalog.match(it, TubularKind.DRILL_PIPE)?.kind ?: TubularKind.TUBING }
+                        ChoiceField(
+                            label = "Running string (cement above liner top, displacement)",
+                            options = listOf(RunningStringChoice.NONE, RunningStringChoice.DRILL_PIPE, RunningStringChoice.TUBING),
+                            selected = when (runningKind) {
+                                null -> RunningStringChoice.NONE
+                                TubularKind.DRILL_PIPE -> RunningStringChoice.DRILL_PIPE
+                                else -> RunningStringChoice.TUBING
+                            },
+                            optionLabel = { it.label },
+                            onSelect = { choice ->
+                                edit { w ->
+                                    when (choice) {
+                                        RunningStringChoice.NONE -> WellStructureEdits.setRunningString(w, s.id, null)
+                                        RunningStringChoice.DRILL_PIPE -> WellStructureDefaults.setDefaultRunningString(w, s.id, TubularKind.DRILL_PIPE)
+                                        RunningStringChoice.TUBING -> WellStructureDefaults.setDefaultRunningString(w, s.id, TubularKind.TUBING)
+                                    }
+                                }
+                            },
+                        )
+                        if (runningString != null && runningKind != null) {
+                            TubularPicker(runningKind, runningString, f, { spec -> edit { w -> WellStructureEdits.setRunningString(w, s.id, spec) } })
+                        }
+                    }
                     TextButton(onClick = { edit { w -> WellStructureEdits.removeCasingString(w, s.id) } }) { Text("Remove this string") }
                     HorizontalDivider()
                 }
@@ -198,4 +235,10 @@ internal fun LazyListScope.wellStructureEditorItems(
             }
         }
     }
+}
+
+private enum class RunningStringChoice(val label: String) {
+    NONE("None (running-string volume not included)"),
+    DRILL_PIPE("Drill pipe"),
+    TUBING("Tubing"),
 }

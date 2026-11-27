@@ -164,8 +164,9 @@ class ObjectVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
                         return fail("ANNULUS_NO_CLEARANCE", "'${hole.name}' bit size is not larger than ${pipe.name} OD between ${m(a)} and ${m(b)} m MD.")
                     }
                     val seg = VolumeSegment(
-                        a, b, "${hole.name} (open hole) × ${pipe.name}", hole.bitDiameter, pipe.outerDiameter, DiameterBasis.BIT_SIZE,
-                        TubularGeometry.annularCapacity(hole.bitDiameter, pipe.outerDiameter), sourceId = hole.id,
+                        a, b, "${hole.name} (open hole) × ${pipe.name}", hole.volumeDiameter, pipe.outerDiameter,
+                        if (hole.averageDiameter != null) DiameterBasis.CALIPER else DiameterBasis.BIT_SIZE,
+                        TubularGeometry.annularCapacity(hole.volumeDiameter, pipe.outerDiameter), sourceId = hole.id,
                     )
                     val last = out.lastOrNull()
                     if (last != null && last.sourceId == seg.sourceId) out[out.lastIndex] = last.copy(bottomMd = b) else out += seg
@@ -179,7 +180,9 @@ class ObjectVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
                         "Open-hole annulus ignores ${cased.joinToString { it.item.name }} in this interval: the volume is to the bit size, not to the casing.",
                     )
                 }
-                issues += ValidationIssue(Severity.INFO, "VOLUME_BIT_SIZE", "Open-hole intervals use the nominal bit size; actual hole volume needs a caliper or an agreed excess.")
+                if (out.any { it.outerBasis == DiameterBasis.BIT_SIZE }) {
+                    issues += ValidationIssue(Severity.INFO, "VOLUME_BIT_SIZE", "Open-hole intervals use the nominal bit size; actual hole volume needs a caliper or an agreed excess.")
+                }
                 out
             }
         }

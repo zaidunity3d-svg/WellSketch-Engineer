@@ -36,7 +36,7 @@ drawn at their depth and labelled. They move at once when a value changes (no an
 ## Calculations (WorkoverCalculator 1.0.0) — implemented, pending engineering validation
 | Result | Formula / rule | Flag |
 |---|---|---|
-| Inside string, annulus, below string, bore to target | π/4·ID², π/4·(D² − OD²); D = innermost casing/liner ID, else bit size | Nominal body dimensions; tool joints and couplings are not in the volumes |
+| Inside string, annulus, below string, bore to target | π/4·ID², π/4·(D² − OD²); D = innermost casing/liner ID, else the caliper (average hole diameter) when entered, else bit size | Nominal body dimensions; tool joints and couplings are not in the volumes |
 | Fill when pulling | Steel (open end) π/4·(OD² − ID²); closed end π/4·OD² | Below the casing top only |
 | Times | volume ÷ pump rate | No surface lines |
 | Hydrostatic, balance, kill density | ρ·g·TVD, TVD below the workover RKB; kill = (P_res + overbalance)/(g·TVD) | Datum convention to confirm (same open item as for EMW) |

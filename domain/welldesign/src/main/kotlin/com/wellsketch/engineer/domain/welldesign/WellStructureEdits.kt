@@ -102,6 +102,24 @@ object WellStructureEdits {
         return EditOutcome.Applied(well.copy(holeSections = rest))
     }
 
+    /**
+     * Sets the average (caliper) hole diameter used for open-hole volumes; null = use the bit
+     * size. Must be positive; a value under the bit size (undergauge) is allowed but flagged by
+     * the validator.
+     */
+    fun setHoleAverageDiameter(well: Well, holeId: String, diameter: Length?): EditOutcome {
+        if (diameter != null && !(diameter > Length.ZERO)) return EditOutcome.Rejected("Hole diameter must be positive")
+        if (well.holeSections.none { it.id == holeId }) return EditOutcome.Rejected("Unknown hole section")
+        return EditOutcome.Applied(well.copy(holeSections = well.holeSections.map { if (it.id == holeId) it.copy(averageDiameter = diameter) else it }))
+    }
+
+    /** Sets the drill pipe / tubing a liner is run and cemented on (null = not entered). */
+    fun setRunningString(well: Well, stringId: String, spec: TubularSpec?): EditOutcome {
+        val s = well.casingStrings.firstOrNull { it.id == stringId } ?: return EditOutcome.Rejected("Unknown casing string")
+        if (!s.isLiner && spec != null) return EditOutcome.Rejected("A running string applies to liners only")
+        return updateString(well, stringId) { it.copy(runningString = spec) }
+    }
+
     fun setHoleBitSize(well: Well, holeId: String, bitDiameter: Length): EditOutcome {
         if (!(bitDiameter > Length.ZERO)) return EditOutcome.Rejected("Bit size must be positive")
         if (well.holeSections.none { it.id == holeId }) return EditOutcome.Rejected("Unknown hole section")

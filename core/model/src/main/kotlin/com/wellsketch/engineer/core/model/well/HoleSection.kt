@@ -18,4 +18,12 @@ data class HoleSection(
     val top: MeasuredDepth,
     val bottom: MeasuredDepth,
     val provenance: DataProvenance,
-)
+    /**
+     * Average hole diameter over the section from a caliper log (or an agreed value). When
+     * entered, open-hole volumes use it instead of the bit size; excess still applies on top.
+     */
+    val averageDiameter: Length? = null,
+) {
+    /** Diameter used for open-hole volumes: the caliper average when entered, else the bit size. */
+    val volumeDiameter: Length get() = averageDiameter ?: bitDiameter
+}

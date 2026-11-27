@@ -82,5 +82,30 @@ object WellStructureDefaults {
         return WellStructureEdits.setTubing(well, state, spec, MeasuredDepth(gl, ref), MeasuredDepth(eot, ref))
     }
 
+    /**
+     * Sets a liner's running string (drill pipe or tubing) to the largest catalogue size that
+     * passes the host casing at the liner top with 0.25 in clearance: drill pipe is checked by
+     * its tool-joint OD, tubing by its body OD (coupling OD is not in the catalogue). The host is
+     * the innermost other string that spans the liner top. The user can change the pick freely.
+     */
+    fun setDefaultRunningString(well: Well, linerId: String, kind: TubularKind): EditOutcome {
+        val ctx = WellGeometryContext(well)
+        val liner = well.casingStrings.firstOrNull { it.id == linerId } ?: return EditOutcome.Rejected("Unknown casing string")
+        if (!liner.isLiner) return EditOutcome.Rejected("A running string applies to liners only")
+        if (kind == TubularKind.CASING) return EditOutcome.Rejected("The running string is drill pipe or tubing")
+        val linerTop = ctx.canonical(liner.top)
+        val host = well.casingStrings
+            .filter { it.id != liner.id && ctx.canonical(it.top) <= linerTop && ctx.canonical(it.shoe.depth) >= linerTop }
+            .minByOrNull { it.spec.innerDiameter.meters }
+        val passLimit = host?.spec?.let { it.driftDiameter ?: it.innerDiameter }?.inches ?: Double.MAX_VALUE
+        val candidates = TubularCatalog.entries.filter { it.kind == kind }
+        val pick = candidates
+            .filter { (it.toolJointOdIn ?: it.outerDiameterIn) < passLimit - RUNNING_CLEARANCE_IN }
+            .maxByOrNull { it.outerDiameterIn * 100 + it.nominalWeightLbFt / 100 }
+            ?: return EditOutcome.Rejected("No catalogue ${if (kind == TubularKind.DRILL_PIPE) "drill pipe" else "tubing"} passes ${host?.name ?: "the host casing"}")
+        return WellStructureEdits.setRunningString(well, linerId, pick.toSpec(null, null))
+    }
+
     private const val LINER_LAP_M = 150.0
+    private const val RUNNING_CLEARANCE_IN = 0.25
 }

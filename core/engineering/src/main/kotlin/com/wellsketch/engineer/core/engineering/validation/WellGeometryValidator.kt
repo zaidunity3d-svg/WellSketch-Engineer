@@ -80,6 +80,15 @@ class WellGeometryValidator {
                 )
             }
         }
+        sections.forEach { (h, _, _) ->
+            val avg = h.averageDiameter
+            if (avg != null && avg < h.bitDiameter) {
+                issues += ValidationIssue(
+                    Severity.INFO, "HOLE_UNDERGAUGE",
+                    "'${h.name}': average hole diameter is smaller than the bit size (undergauge); open-hole volumes use it.", listOf(h.id),
+                )
+            }
+        }
         val sorted = sections.sortedBy { it.second }
         // First hole section should start at ground level (HTML v0.9 QA rule); offshore, GL is the seabed.
         val gl = ctx.canonical(groundLevelMd(ctx))
@@ -159,10 +168,12 @@ class WellGeometryValidator {
                     )
                 }
                 if (toc < top - Length.meters(0.001)) {
-                    issues += ValidationIssue(
-                        Severity.WARNING, "CEMENT_ABOVE_TOP",
-                        "'${s.name}': top of cement is above the top of the string.", listOf(s.id),
-                    )
+                    // A liner cemented on its running string normally has cement above the liner top.
+                    issues += if (s.isLiner && s.runningString != null) {
+                        ValidationIssue(Severity.INFO, "CEMENT_ABOVE_TOP", "'${s.name}': cement above the liner top, around the running string.", listOf(s.id))
+                    } else {
+                        ValidationIssue(Severity.WARNING, "CEMENT_ABOVE_TOP", "'${s.name}': top of cement is above the top of the string.", listOf(s.id))
+                    }
                 }
                 c.tailTop?.let(ctx::canonical)?.let { tail ->
                     if (!(tail > toc && tail < boc)) {

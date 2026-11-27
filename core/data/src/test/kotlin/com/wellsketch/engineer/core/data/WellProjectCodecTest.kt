@@ -49,6 +49,27 @@ class WellProjectCodecTest {
     }
 
     @Test
+    fun caliperAndLinerRunningStringRoundTripAndOldDocumentsDecode() {
+        val project = SyntheticDemoProjects.vertical()
+        val hole = project.well.holeSections.last()
+        val host = project.well.casingStrings.first()
+        val caliper = hole.bitDiameter * 1.1
+        val changed = project.copy(
+            well = project.well.copy(
+                holeSections = project.well.holeSections.map { if (it.id == hole.id) it.copy(averageDiameter = caliper) else it },
+                casingStrings = project.well.casingStrings.map { if (it.id == host.id) it.copy(runningString = host.spec) else it },
+            ),
+        )
+        val decoded = WellProjectCodec.decode(WellProjectCodec.encode(changed))
+        assertEquals(changed, decoded)
+        assertEquals(caliper, decoded.well.holeSections.single { it.id == hole.id }.averageDiameter)
+        // documents written before these inputs have neither key and decode with bit size / no running string
+        val old = WellProjectCodec.encode(project)
+        assertTrue("averageDiameter" !in old && "runningString" !in old)
+        assertNull(WellProjectCodec.decode(old).well.holeSections.single { it.id == hole.id }.averageDiameter)
+    }
+
+    @Test
     fun newerSchemaVersionIsRejectedInsteadOfTruncated() {
         val payload = WellProjectCodec.encode(SyntheticDemoProjects.vertical())
             .replace("\"schemaVersion\":1", "\"schemaVersion\":99")

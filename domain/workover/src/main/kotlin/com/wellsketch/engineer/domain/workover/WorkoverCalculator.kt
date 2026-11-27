@@ -307,7 +307,7 @@ class WorkoverCalculator {
             val d = outer.diameter
             val basis = outer.basis
             val src = outer.sourceId
-            val name = if (basis == DiameterBasis.BIT_SIZE) "${outer.name} (open hole)" else outer.name
+            val name = if (basis.isOpenHole) "${outer.name} (open hole)" else outer.name
             if (d <= item.outerDiameter) {
                 issues += ValidationIssue(Severity.ERROR, "ANNULUS_NO_CLEARANCE", "'${item.name}' OD does not fit in $name between ${m(a)} and ${m(b)} m MD.")
                 continue
@@ -336,7 +336,11 @@ class WorkoverCalculator {
                     issues += ValidationIssue(Severity.ERROR, "VOLUME_GEOMETRY_GAP", "No casing or hole recorded between ${m(a)} and ${m(b)} m MD.")
                     continue
                 }
-                VolumeSegment(a, b, "${h.name} (open hole)", h.bitDiameter, null, DiameterBasis.BIT_SIZE, TubularGeometry.insideCapacity(h.bitDiameter), sourceId = h.id)
+                VolumeSegment(
+                    a, b, "${h.name} (open hole)", h.volumeDiameter, null,
+                    if (h.averageDiameter != null) DiameterBasis.CALIPER else DiameterBasis.BIT_SIZE,
+                    TubularGeometry.insideCapacity(h.volumeDiameter), sourceId = h.id,
+                )
             }
             val last = segments.lastOrNull()
             if (last != null && last.sourceId == seg.sourceId && last.bottomMd == a) segments[segments.lastIndex] = last.copy(bottomMd = b) else segments += seg
@@ -346,7 +350,7 @@ class WorkoverCalculator {
 
     private fun boreCapacityAt(geometry: WellboreGeometry, md: Length): Pair<Length, Boolean>? {
         geometry.innermostStringAt(md)?.let { return it.spec.innerDiameter to false }
-        return geometry.holeAt(md)?.let { it.bitDiameter to true }
+        return geometry.holeAt(md)?.let { it.volumeDiameter to true }
     }
 
     private fun clearance(

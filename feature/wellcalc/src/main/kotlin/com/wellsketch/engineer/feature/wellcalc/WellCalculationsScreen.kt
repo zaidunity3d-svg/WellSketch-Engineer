@@ -282,7 +282,11 @@ private fun VolumeBreakdownDetails(v: VolumeBreakdown, f: UnitFormatter, showSeg
     if (showSegments) {
         v.segments.forEach { s ->
             val dia = s.innerDiameter?.let { "${f.diameter(s.outerDiameter)} × ${f.diameter(it)}" } ?: f.diameter(s.outerDiameter)
-            val basis = if (s.outerBasis == DiameterBasis.BIT_SIZE) ", bit size" else ""
+            val basis = when (s.outerBasis) {
+                DiameterBasis.BIT_SIZE -> ", bit size"
+                DiameterBasis.CALIPER -> ", caliper"
+                DiameterBasis.STATED_ID -> ""
+            }
             Text(
                 "${f.depth(s.topMd)} – ${f.depth(s.bottomMd)} · ${s.description} · $dia$basis · ${f.capacity(s.capacity)}" +
                     (if (s.excessFraction > 0.0) " · +${UnitFormatter.number(s.excessFraction * 100.0, 0)} %" else "") +
