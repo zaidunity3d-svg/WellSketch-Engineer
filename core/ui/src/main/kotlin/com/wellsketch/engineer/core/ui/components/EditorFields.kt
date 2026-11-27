@@ -166,10 +166,11 @@ fun TubularPicker(
         LabeledValue("ID", formatter.diameter(entry.innerDiameter))
         LabeledValue("Drift", entry.drift?.let(formatter::diameter) ?: "Not listed")
         LabeledValue("Capacity", formatter.capacity(TubularGeometry.insideCapacity(entry.innerDiameter)))
-        if (entry.toolJointOdIn != null) {
+        val jointOd = entry.toolJointOdIn
+        if (jointOd != null) {
             LabeledValue(
                 "Tool joint (reference)",
-                "${entry.toolJointConnection} – OD ${formatter.diameter(Length.inches(entry.toolJointOdIn))}, ID ${formatter.diameter(Length.inches(entry.toolJointIdIn ?: 0.0))}",
+                "${entry.toolJointConnection} – OD ${formatter.diameter(Length.inches(jointOd))}, ID ${formatter.diameter(Length.inches(entry.toolJointIdIn ?: 0.0))}",
             )
         }
         Text(

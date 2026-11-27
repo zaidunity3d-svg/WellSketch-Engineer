@@ -475,11 +475,12 @@ class WorkoverCalculator {
         op: WorkoverOperation,
         issues: MutableList<ValidationIssue>,
     ): AcidResult? {
-        if (tTop == null || tBottom == null || op.treatmentVolumePerLength == null) {
+        val perLength = op.treatmentVolumePerLength
+        if (tTop == null || tBottom == null || perLength == null) {
             issues += ValidationIssue(Severity.WARNING, "WO_ACID_INPUTS", "Enter the treatment interval and the volume per length.")
             return null
         }
-        val treatment = op.treatmentVolumePerLength.cubicMetersPerMeter * (tBottom - tTop).meters
+        val treatment = perLength.cubicMetersPerMeter * (tBottom - tTop).meters
         val below = if (tTop > bottom) bore(geometry, bottom, tTop, "", issues).total.cubicMeters else 0.0
         val tvdTop = tvdBelowDatum(ctx, tTop, op.depthReference)
         val masp = op.fractureGradient?.let { fg ->
