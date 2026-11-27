@@ -24,6 +24,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -65,6 +66,7 @@ fun HomeScreen(
     onOpenWellCalculations: (String) -> Unit,
     onOpenCtCalculations: (String) -> Unit,
     onOpenEquipmentLibrary: () -> Unit,
+    onOpenWorkover: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val active = state.activeProject
@@ -124,6 +126,11 @@ fun HomeScreen(
                             "CT Calculations", "Completed-well CT setup, Christmas Tree and CT stack, CT/BHA placement and restrictions.",
                             Icons.Filled.Settings, enabled = active != null, modifier = Modifier.width(cardWidth),
                         ) { active?.let { onOpenCtCalculations(it.id) } }
+                        ModuleCard(
+                            "Workover", "Workover rig and BOP on a completed well; drill pipe or tubing work string, tools, " +
+                                "perforation, cement plug, packer, ESP and acid jobs.",
+                            Icons.Filled.Refresh, enabled = active != null, modifier = Modifier.width(cardWidth),
+                        ) { active?.let { onOpenWorkover(it.id) } }
                     }
                 }
                 ModuleCard(

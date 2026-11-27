@@ -21,4 +21,7 @@ data class WellCalculationsRoute(val projectId: String)
 data class CtCalculationsRoute(val projectId: String)
 
 @Serializable
+data class WorkoverRoute(val projectId: String)
+
+@Serializable
 data object EquipmentLibraryRoute

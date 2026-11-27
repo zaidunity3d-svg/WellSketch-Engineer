@@ -35,6 +35,7 @@ dependencies {
     implementation(project(":feature:welldesign"))
     implementation(project(":feature:wellcalc"))
     implementation(project(":feature:ctcalc"))
+    implementation(project(":feature:workover"))
     implementation(project(":feature:equipment"))
 
     implementation(libs.androidx.core.ktx)
