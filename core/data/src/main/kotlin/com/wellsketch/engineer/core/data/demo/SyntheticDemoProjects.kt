@@ -50,6 +50,19 @@ import com.wellsketch.engineer.core.model.trajectory.DirectionalSurvey
 import com.wellsketch.engineer.core.model.trajectory.SurveyKind
 import com.wellsketch.engineer.core.model.trajectory.TrajectoryType
 import com.wellsketch.engineer.core.model.units.Angle
+import com.wellsketch.engineer.core.model.units.VolumePerLength
+import com.wellsketch.engineer.core.model.units.Volume
+import com.wellsketch.engineer.core.model.units.PressureGradient
+import com.wellsketch.engineer.core.model.units.Density
+import com.wellsketch.engineer.core.model.workover.WorkoverToolType
+import com.wellsketch.engineer.core.model.workover.WorkoverTool
+import com.wellsketch.engineer.core.model.workover.WorkoverRigUp
+import com.wellsketch.engineer.core.model.workover.WorkoverRig
+import com.wellsketch.engineer.core.model.workover.WorkoverOperationType
+import com.wellsketch.engineer.core.model.workover.WorkoverOperation
+import com.wellsketch.engineer.core.model.workover.WorkStringSection
+import com.wellsketch.engineer.core.model.workover.WorkStringPipeKind
+import com.wellsketch.engineer.core.model.workover.WorkString
 import com.wellsketch.engineer.core.model.units.FlowRate
 import com.wellsketch.engineer.core.model.units.Length
 import com.wellsketch.engineer.core.model.units.Pressure
@@ -132,16 +145,23 @@ object SyntheticDemoProjects {
      * (non-synthetic) projects are never touched.
      */
     fun withCurrentSurfaceEquipment(stored: WellProject): WellProject? {
-        if (!stored.isSyntheticDemo || stored.well.wellhead != null) return null
+        if (!stored.isSyntheticDemo) return null
         val fresh = all().firstOrNull { it.id == stored.id } ?: return null
-        return stored.copy(
-            well = stored.well.copy(
+        val needsSurface = stored.well.wellhead == null
+        // Demo workover example added in a later version.
+        val needsWorkover = stored.workoverOperations.isEmpty() && fresh.workoverOperations.isNotEmpty()
+        if (!needsSurface && !needsWorkover) return null
+        val well = if (!needsSurface) {
+            stored.well
+        } else {
+            stored.well.copy(
                 wellhead = fresh.well.wellhead,
                 cellar = fresh.well.cellar,
                 drillingRigUp = fresh.well.drillingRigUp,
                 christmasTree = fresh.well.christmasTree,
-            ),
-        )
+            )
+        }
+        return stored.copy(well = well, workoverOperations = if (needsWorkover) fresh.workoverOperations else stored.workoverOperations)
     }
 
     fun all(nowEpochMillis: Long = 0L): List<WellProject> = listOf(
@@ -199,6 +219,7 @@ object SyntheticDemoProjects {
             drillingRigUp = drillingRigUp(id),
         )
         return project(id, "Vertical producer", well, ctOperation(id, currentDepth = 2000.0), now)
+            .copy(workoverOperations = listOf(workoverOperation(id)))
     }
 
     fun jShaped(now: Long = 0L): WellProject {
@@ -571,6 +592,50 @@ object SyntheticDemoProjects {
             ),
         ),
     )
+
+    /**
+     * Synthetic workover example on the vertical demo: tubing work string with a packer above
+     * the perforations for an acid job, from a workover rig whose RKB is 5.0 m above GL
+     * (well MD = workover depth + 6.1 m). All values are illustrative, not rig or tool data.
+     */
+    private fun workoverOperation(id: String): WorkoverOperation {
+        val woRkb = DepthReference.Operation("$id-wo-rkb", "Workover RKB (demo)", Length.meters(5.0))
+        val offset = GL_MD - 5.0
+        fun wo(wellMd: Double) = Length.meters(wellMd - offset)
+        fun woBop(cid: String, type: DrillingBopComponentType, name: String, h: Double, rams: List<RamType> = emptyList()) = DrillingBopComponent(
+            id = cid, type = type, name = name, bore = inch(11.0), ratedWorkingPressure = Pressure.psi(5000.0),
+            topConnection = EndConnection(THS_TOP), bottomConnection = EndConnection(THS_TOP), height = Length.meters(h),
+            rams = rams, provenance = synthetic,
+        )
+        return WorkoverOperation(
+            id = "$id-wo", name = "Acid wash, reservoir G (demo)", type = WorkoverOperationType.ACIDIZING,
+            objective = "Synthetic example: packer above the perforations, acid placed across them.",
+            depthReference = woRkb, bottomDepth = wo(2252.0),
+            workString = WorkString(
+                "$id-wo-ws", "Work string (demo)",
+                listOf(WorkStringSection("$id-wo-ws1", WorkStringPipeKind.TUBING, "3-1/2 in tubing work string (demo)", tubingSpec, Length.ZERO)),
+                synthetic,
+            ),
+            tools = listOf(WorkoverTool("$id-wo-pk", WorkoverToolType.PACKER, "Retrievable packer (demo)", Length.meters(2.0), inch(5.8), inch(2.4), provenance = synthetic)),
+            rigUp = WorkoverRigUp(
+                WorkoverRig("$id-wo-rig", "Workover rig (demo)", floorBelowRkb = Length.meters(0.0), provenance = synthetic),
+                DrillingBopStack(
+                    "$id-wo-bop", "Workover BOP (demo)",
+                    listOf(
+                        woBop("$id-wo-ann", DrillingBopComponentType.ANNULAR_PREVENTER, "Annular (demo)", 1.0),
+                        woBop("$id-wo-dr", DrillingBopComponentType.DOUBLE_RAM_PREVENTER, "Double ram, pipe/blind (demo)", 1.2, listOf(RamType.PIPE, RamType.BLIND)),
+                    ),
+                    synthetic,
+                ),
+            ),
+            targetTop = wo(2300.0), targetBottom = wo(2355.0),
+            wellFluidDensity = Density(1030.0), pumpedFluidDensity = Density(1070.0),
+            pumpRate = FlowRate.cubicMetersPerMinute(0.4), reservoirPressure = Pressure.psi(3200.0),
+            fractureGradient = PressureGradient.psiPerFoot(0.75),
+            treatmentVolumePerLength = VolumePerLength.cubicMetersPerMeter(0.1), overflushVolume = Volume.cubicMeters(2.0),
+            provenance = synthetic,
+        )
+    }
 
     private fun ctOperation(id: String, currentDepth: Double): CtOperation {
         val stack = CtPressureControlStack(

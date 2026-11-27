@@ -2,6 +2,7 @@ package com.wellsketch.engineer.core.model.project
 
 import com.wellsketch.engineer.core.model.ct.CtOperation
 import com.wellsketch.engineer.core.model.provenance.DataProvenance
+import com.wellsketch.engineer.core.model.workover.WorkoverOperation
 import com.wellsketch.engineer.core.model.well.Well
 import kotlinx.serialization.Serializable
 
@@ -21,6 +22,8 @@ data class WellProject(
     val well: Well,
     val ctOperations: List<CtOperation> = emptyList(),
     val provenance: DataProvenance,
+    /** Workover jobs with a workover rig (optional; older documents have none). */
+    val workoverOperations: List<WorkoverOperation> = emptyList(),
 ) {
     val isSyntheticDemo: Boolean get() = provenance.isSynthetic
 

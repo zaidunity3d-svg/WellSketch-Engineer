@@ -187,7 +187,7 @@ private class ElementShape(
 /** Minimum on-screen wall thickness for casing, tubing and CT walls (drawing only). */
 private const val MIN_WALL_DP = 2.5f
 
-private val thinWallKinds = setOf(ElementKind.CASING_WALL, ElementKind.TUBING_WALL, ElementKind.CT_WALL)
+private val thinWallKinds = setOf(ElementKind.CASING_WALL, ElementKind.TUBING_WALL, ElementKind.CT_WALL, ElementKind.WORK_STRING_WALL)
 
 private fun buildShapes(p: SchematicProjection, minWallPx: Double): List<ElementShape> =
     p.scene.elementsInDrawOrder
@@ -242,7 +242,8 @@ private fun DrawScope.drawElement(p: SchematicProjection, shape: ElementShape, s
     val e = shape.element
     val base = SchematicPalette.elementColor(e)
     val shaded = e.kind == ElementKind.COMPLETION_COMPONENT || e.kind == ElementKind.BHA_COMPONENT ||
-        e.kind == ElementKind.CT_WALL || e.kind == ElementKind.TUBING_WALL
+        e.kind == ElementKind.CT_WALL || e.kind == ElementKind.TUBING_WALL ||
+        e.kind == ElementKind.WORK_STRING_WALL || e.kind == ElementKind.WORKOVER_TOOL
     shape.paths.forEach { path ->
         if (shaded) {
             // Cylindrical shading gives tools an intact, 3D-like external appearance.

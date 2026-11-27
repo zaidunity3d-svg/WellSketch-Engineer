@@ -147,6 +147,28 @@ class UnitFormatter(val system: UnitSystem) {
         UnitSystem.FIELD_METRIC -> "${number(gradient.psiPerMeter, 4)} psi/m"
     }
 
+    fun gradientValue(gradient: PressureGradient): Double = when (system) {
+        UnitSystem.OILFIELD -> gradient.psiPerFoot
+        UnitSystem.METRIC -> gradient.barPerMeter
+        UnitSystem.FIELD_METRIC -> gradient.psiPerMeter
+    }
+
+    fun gradientFromValue(value: Double): PressureGradient = when (system) {
+        UnitSystem.OILFIELD -> PressureGradient.psiPerFoot(value)
+        UnitSystem.METRIC -> PressureGradient.pascalsPerMeter(value * UnitDefinitions.PASCALS_PER_BAR)
+        UnitSystem.FIELD_METRIC -> PressureGradient.pascalsPerMeter(value * UnitDefinitions.PASCALS_PER_PSI)
+    }
+
+    // --- Input conversions for editable fields --------------------------------------------
+    fun diameterValue(length: Length): Double = if (inchDiameters) length.inches else length.millimeters
+    fun diameterFromValue(value: Double): Length = if (inchDiameters) Length.inches(value) else Length.millimeters(value)
+    fun volumeFromValue(value: Double): Volume = if (system == UnitSystem.METRIC) Volume.cubicMeters(value) else Volume.barrels(value)
+    fun capacityFromValue(value: Double): VolumePerLength = when (system) {
+        UnitSystem.OILFIELD -> VolumePerLength.barrelsPerFoot(value)
+        UnitSystem.METRIC -> VolumePerLength.cubicMetersPerMeter(value / 1000.0)
+        UnitSystem.FIELD_METRIC -> VolumePerLength.barrelsPerMeter(value)
+    }
+
     // --- Rates, velocity, time -----------------------------------------------------------
     fun flowRateValue(rate: FlowRate): Double = if (system == UnitSystem.METRIC) rate.cubicMetersPerMinute else rate.barrelsPerMinute
     fun flowRateFromValue(value: Double): FlowRate =

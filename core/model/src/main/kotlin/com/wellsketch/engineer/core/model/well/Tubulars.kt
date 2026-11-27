@@ -105,6 +105,12 @@ data class CasingString(
     val shoe: CasingShoe,
     val cement: CementSheath? = null,
     val provenance: DataProvenance,
+    /**
+     * Liners: the drill pipe or tubing the liner is run and cemented on. Used for cement placed
+     * above the liner top (around this string, inside the host casing) and for the displacement
+     * from surface to the liner top. Null = not entered.
+     */
+    val runningString: TubularSpec? = null,
 ) {
     val isLiner: Boolean get() = role.isLiner
 }

@@ -206,8 +206,9 @@ class SurfaceStackupCalculator {
         var drillingStackTop: Length? = null
         var drillFloor: Length? = null
         var clearance: Length? = null
-        if (state is OperatingState.Drilling) {
+        if (state is OperatingState.RigOnWell) {
             val rig = state.rigUp.rig
+            val rigRkb = state.rigRkbAboveGroundLevel ?: rkbAboveGl
             val bop = state.rigUp.bopStack.components
             drillingStackTop = top?.let { stackTop(it, bop.map { c -> c.height }) }
             if (bop.any { it.height == null }) {
@@ -237,7 +238,7 @@ class SurfaceStackupCalculator {
                     listOf(lowest.id, topSection.id),
                 )
             }
-            drillFloor = rig.floorBelowRkb?.let { rkbAboveGl - it }
+            drillFloor = rig.floorBelowRkb?.let { rigRkb - it }
             if (rig.floorBelowRkb == null) {
                 issues += ValidationIssue(
                     Severity.INFO, "RIG_FLOOR_BELOW_RKB_MISSING",

@@ -14,6 +14,8 @@ import androidx.navigation.toRoute
 import com.wellsketch.engineer.AppContainer
 import com.wellsketch.engineer.feature.ctcalc.CtCalculationsScreen
 import com.wellsketch.engineer.feature.ctcalc.CtCalculationsViewModel
+import com.wellsketch.engineer.feature.workover.WorkoverScreen
+import com.wellsketch.engineer.feature.workover.WorkoverViewModel
 import com.wellsketch.engineer.feature.equipment.EquipmentLibraryScreen
 import com.wellsketch.engineer.feature.equipment.EquipmentLibraryViewModel
 import com.wellsketch.engineer.feature.wellcalc.WellCalculationsScreen
@@ -55,6 +57,7 @@ fun WellSketchNavHost(container: AppContainer) {
                 onOpenWellDesign = { navController.navigate(WellDesignRoute(it)) },
                 onOpenWellCalculations = { navController.navigate(WellCalculationsRoute(it)) },
                 onOpenCtCalculations = { navController.navigate(CtCalculationsRoute(it)) },
+                onOpenWorkover = { navController.navigate(WorkoverRoute(it)) },
                 onOpenEquipmentLibrary = { navController.navigate(EquipmentLibraryRoute) },
             )
         }
@@ -72,6 +75,11 @@ fun WellSketchNavHost(container: AppContainer) {
             val route = entry.toRoute<CtCalculationsRoute>()
             val vm = viewModel { CtCalculationsViewModel(route.projectId, container.wellProjects, container.autosaver) }
             CtCalculationsScreen(vm, unitSystem, onBack = { navController.popBackStack() })
+        }
+        composable<WorkoverRoute> { entry ->
+            val route = entry.toRoute<WorkoverRoute>()
+            val vm = viewModel { WorkoverViewModel(route.projectId, container.wellProjects, container.autosaver) }
+            WorkoverScreen(vm, unitSystem, onBack = { navController.popBackStack() })
         }
         composable<EquipmentLibraryRoute> {
             val vm = viewModel { EquipmentLibraryViewModel(container.equipmentCatalog) }

@@ -16,6 +16,13 @@ enum class DiameterBasis(val label: String) {
 
     /** Nominal bit size: open-hole volumes ignore washout/enlargement unless a caliper is entered. */
     BIT_SIZE("Nominal bit size"),
+
+    /** Average hole diameter entered for the hole section (caliper log or agreed value). */
+    CALIPER("Average hole diameter (caliper)"),
+    ;
+
+    /** True for open hole, whether from the bit size or a caliper. */
+    val isOpenHole: Boolean get() = this == BIT_SIZE || this == CALIPER
 }
 
 /** The bore that contains fluid at a depth, or the outer wall of an annulus. */
@@ -40,8 +47,8 @@ sealed interface Bore {
     }
 
     data class OpenHole(val hole: HoleSection) : Bore {
-        override val diameter get() = hole.bitDiameter
-        override val basis get() = DiameterBasis.BIT_SIZE
+        override val diameter get() = hole.volumeDiameter
+        override val basis get() = if (hole.averageDiameter != null) DiameterBasis.CALIPER else DiameterBasis.BIT_SIZE
         override val sourceId get() = hole.id
         override val name get() = hole.name
     }

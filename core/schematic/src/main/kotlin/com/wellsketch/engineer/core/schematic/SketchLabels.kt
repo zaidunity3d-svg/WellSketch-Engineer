@@ -1,5 +1,6 @@
 package com.wellsketch.engineer.core.schematic
 
+import com.wellsketch.engineer.core.model.workover.WorkoverToolType
 import com.wellsketch.engineer.core.model.well.CompletionComponentType
 import com.wellsketch.engineer.core.model.well.PerforationStatus
 
@@ -54,6 +55,20 @@ object SketchLabels {
                         SketchLabelKind.PERFORATIONS, e.sourceId, e.mdTop, e.mdBottom, radius = e.outerRadius,
                         name = e.label, perforationStatus = detail.status,
                     )
+            }
+        }
+        // Workover: packers, and the top of the remaining tools (one label, to keep the sketch legible);
+        // with no tools, the end of the work string.
+        val tools = scene.elements.filter { it.kind == ElementKind.WORKOVER_TOOL }
+        tools.filter { (it.detail as? ElementDetail.WorkoverTool)?.type == WorkoverToolType.PACKER }.forEach {
+            out += SketchLabel(SketchLabelKind.PACKER, it.sourceId, it.mdTop, radius = it.outerRadius, name = it.label)
+        }
+        tools.filter { (it.detail as? ElementDetail.WorkoverTool)?.type != WorkoverToolType.PACKER }.minByOrNull { it.mdTop }?.let {
+            out += SketchLabel(SketchLabelKind.PLUG, it.sourceId, it.mdTop, radius = it.outerRadius, name = it.label)
+        }
+        if (tools.isEmpty()) {
+            scene.elements.filter { it.kind == ElementKind.WORK_STRING_WALL }.maxByOrNull { it.mdBottom }?.let {
+                out += SketchLabel(SketchLabelKind.PLUG, it.sourceId, it.mdBottom, radius = it.outerRadius, name = "Work string end")
             }
         }
         return out.sortedBy { it.md }

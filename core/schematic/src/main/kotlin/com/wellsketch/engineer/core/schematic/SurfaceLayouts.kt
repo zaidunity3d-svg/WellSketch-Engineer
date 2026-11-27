@@ -148,9 +148,9 @@ object SurfaceLayouts {
         when (state) {
             is OperatingState.CompletedWithTree -> y = stackTree(state.tree, removeCap = false, y, blocks, side)
             is OperatingState.CoiledTubingIntervention -> y = stackCt(state.tree, state.rigUp, ctViewMode, y, blocks, side)
-            is OperatingState.Drilling -> {
+            is OperatingState.RigOnWell -> {
                 y = stackBop(state.rigUp, y, blocks)
-                rig = rigDrawing(state.rigUp, inputs, y)
+                rig = rigDrawing(state.rigUp, inputs, y, state.rigRkbAboveGroundLevel?.meters)
                 structures += SurfaceBlock(
                     id = "rig-floor:${rig.sourceId}", sourceId = rig.sourceId, kind = SurfaceBlockKind.RIG_FLOOR,
                     label = "Rig floor", centerOffset = 0.0, bottomAboveGl = rig.beamsUndersideAboveGl,
@@ -217,7 +217,7 @@ object SurfaceLayouts {
             val top = recordedTop ?: defaultTop
             val fromGl = recordedTop != null && recordedTop > 0.0
             val height = if (fromGl) recordedTop!! else PLACEHOLDER_WELLHEAD_HEIGHT
-            val sourceId = tree?.id ?: (state as? OperatingState.Drilling)?.rigUp?.bopStack?.id ?: "wellhead"
+            val sourceId = tree?.id ?: (state as? OperatingState.RigOnWell)?.rigUp?.bopStack?.id ?: "wellhead"
             return listOf(
                 SurfaceBlock(
                     id = "wellhead:$sourceId", sourceId = sourceId, kind = SurfaceBlockKind.WELLHEAD, label = "Wellhead",
@@ -359,9 +359,9 @@ object SurfaceLayouts {
         return y
     }
 
-    private fun rigDrawing(rigUp: DrillingRigUp, inputs: SurfaceInputs, stackTop: Double): RigDrawing {
+    private fun rigDrawing(rigUp: DrillingRigUp, inputs: SurfaceInputs, stackTop: Double, rigRkbAboveGl: Double? = null): RigDrawing {
         val rig = rigUp.rig
-        val rkb = inputs.rkbAboveGl ?: 0.0
+        val rkb = rigRkbAboveGl ?: inputs.rkbAboveGl ?: 0.0
         val floorTop = rkb - (rig.floorBelowRkb?.meters ?: 0.0)
         val beams = rig.clearHeightUnderRotaryBeams?.meters ?: (floorTop - FLOOR_DECK - ROTARY_BEAM_DEPTH)
         val halfWidth = rig.substructureWidth?.meters?.div(2.0) ?: PLACEHOLDER_SUBSTRUCTURE_HALF_WIDTH

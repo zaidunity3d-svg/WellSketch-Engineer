@@ -92,7 +92,9 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
             val toc = ctx.canonical(cement.top)
             val bottom = ctx.canonical(cement.bottom)
             if (toc < span.top) {
-                issues += ValidationIssue(Severity.WARNING, "CEMENT_ABOVE_STRING", "Top of cement is above the top of ${string.name}; the annulus is taken from the string top.", listOf(string.id))
+                if (!(string.isLiner && string.runningString != null)) {
+                    issues += ValidationIssue(Severity.WARNING, "CEMENT_ABOVE_STRING", "Top of cement is above the top of ${string.name}; the annulus is taken from the string top.", listOf(string.id))
+                }
             }
             if (bottom > span.bottom + Length.meters(WellboreGeometry.BREAK_TOLERANCE_M)) {
                 issues += ValidationIssue(Severity.WARNING, "CEMENT_BELOW_SHOE", "Bottom of cement is below the shoe of ${string.name}; the annulus is taken to the shoe.", listOf(string.id))
@@ -115,16 +117,19 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
                 return VolumeBreakdown(
                     title,
                     raw.segments.map {
-                        it.copy(excessFraction = if (it.outerBasis == DiameterBasis.BIT_SIZE) policy.openHoleExcessFraction else policy.casedHoleExcessFraction)
+                        it.copy(excessFraction = if (it.outerBasis.isOpenHole) policy.openHoleExcessFraction else policy.casedHoleExcessFraction)
                     },
                 )
             }
+            // Liner with its running string: cement above the liner top sits around the running
+            // string inside the host casing (as in liner cementing programmes) and is part of the lead.
+            val above = aboveLinerTop(geometry, string, toc, span.top, policy, issues)
             if (split != null) {
-                lead = piece("Lead slurry", top, split)
+                lead = VolumeBreakdown("Lead slurry", above + piece("Lead slurry", top, split).segments)
                 tail = piece("Tail slurry", split, end)
                 VolumeBreakdown("Annulus", lead.segments + tail.segments)
             } else {
-                piece("Annulus", top, end)
+                VolumeBreakdown("Annulus", above + piece("Annulus", top, end).segments)
             }
         }
 
@@ -146,14 +151,23 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
             else -> VolumeSegment(floatCollar, span.bottom, "Shoe track inside ${string.name}", id, null, DiameterBasis.STATED_ID, TubularGeometry.insideCapacity(id), sourceId = string.id)
         }
         val displacementBottom = shoeTrack?.topMd ?: span.bottom
+        val running = string.runningString?.takeIf { string.isLiner }
+        val runningSegment = running?.let { rs ->
+            // From the rig floor (MD 0 of the canonical datum) to the liner top.
+            VolumeSegment(
+                Length.ZERO, span.top, "Inside running string (${inchLabel(rs.outerDiameter)} OD)", rs.innerDiameter, null,
+                DiameterBasis.STATED_ID, TubularGeometry.insideCapacity(rs.innerDiameter), sourceId = "${string.id}/running",
+            )
+        }
         val displacement = VolumeBreakdown(
             "Displacement",
-            listOf(VolumeSegment(span.top, displacementBottom, "Inside ${string.name}", id, null, DiameterBasis.STATED_ID, TubularGeometry.insideCapacity(id), sourceId = string.id)),
+            listOfNotNull(runningSegment) +
+                VolumeSegment(span.top, displacementBottom, "Inside ${string.name}", id, null, DiameterBasis.STATED_ID, TubularGeometry.insideCapacity(id), sourceId = string.id),
         )
-        if (string.isLiner) {
+        if (string.isLiner && running == null) {
             issues += ValidationIssue(
                 Severity.WARNING, "CEMENT_LINER_RUNNING_STRING",
-                "Liner job: the running-string volume from surface to the liner top is not included in the displacement.",
+                "Liner job: enter the running string (drill pipe / tubing) to include its volume from surface to the liner top in the displacement.",
                 listOf(string.id),
             )
         }
@@ -166,15 +180,56 @@ class CementVolumeCalculator(private val volumes: WellVolumeCalculator = WellVol
         val ratholeHole = geometry.holes.firstOrNull { it.item.bitDiameter > od && shoe > it.top + tol && shoe < it.bottom - tol }
         val rathole = ratholeHole?.let { h ->
             VolumeSegment(
-                shoe, h.bottom, "Rathole – ${h.item.name}", h.item.bitDiameter, null, DiameterBasis.BIT_SIZE,
-                TubularGeometry.insideCapacity(h.item.bitDiameter), excessFraction = policy.openHoleExcessFraction, sourceId = h.item.id,
+                shoe, h.bottom, "Rathole – ${h.item.name}", h.item.volumeDiameter, null,
+                if (h.item.averageDiameter != null) DiameterBasis.CALIPER else DiameterBasis.BIT_SIZE,
+                TubularGeometry.insideCapacity(h.item.volumeDiameter), excessFraction = policy.openHoleExcessFraction, sourceId = h.item.id,
             )
         }
 
         return CementJobVolumes(string, annulus, shoeTrack, rathole, policy.includeRathole && rathole != null, displacement, issues.distinct(), lead, tail)
     }
 
+    /** Annulus above the liner top: host casing ID × running-string OD, cased-hole excess. */
+    private fun aboveLinerTop(
+        geometry: WellboreGeometry,
+        string: com.wellsketch.engineer.core.model.well.CasingString,
+        toc: Length,
+        linerTop: Length,
+        policy: CementExcessPolicy,
+        issues: MutableList<ValidationIssue>,
+    ): List<VolumeSegment> {
+        val rs = string.runningString
+        if (!string.isLiner || rs == null || toc >= linerTop - Length.meters(WellboreGeometry.BREAK_TOLERANCE_M)) return emptyList()
+        val out = mutableListOf<VolumeSegment>()
+        for ((a, b) in geometry.breakpoints(toc, linerTop).zipWithNext()) {
+            val host = geometry.innermostStringAt(WellVolumeCalculator.mid(a, b))?.takeIf { it.id != string.id }
+            if (host == null) {
+                issues += ValidationIssue(Severity.ERROR, "CEMENT_ABOVE_LINER_NO_HOST", "No casing recorded above the liner top between ${WellVolumeCalculator.fmtM(a)} and ${WellVolumeCalculator.fmtM(b)} m MD.", listOf(string.id))
+                continue
+            }
+            if (host.spec.innerDiameter <= rs.outerDiameter) {
+                issues += ValidationIssue(Severity.ERROR, "ANNULUS_NO_CLEARANCE", "Running string OD does not fit inside ${host.name}.", listOf(string.id))
+                continue
+            }
+            out += VolumeSegment(
+                a, b, "${host.name} × running string (above liner top)", host.spec.innerDiameter, rs.outerDiameter, DiameterBasis.STATED_ID,
+                TubularGeometry.annularCapacity(host.spec.innerDiameter, rs.outerDiameter),
+                excessFraction = policy.casedHoleExcessFraction, sourceId = "${host.id}/running",
+            )
+        }
+        if (out.isNotEmpty()) {
+            issues += ValidationIssue(
+                Severity.INFO, "CEMENT_ABOVE_LINER_TOP",
+                "Cement above the liner top is calculated around the running string inside the host casing (to be circulated out or drilled).",
+                listOf(string.id),
+            )
+        }
+        return out
+    }
+
+    private fun inchLabel(l: Length) = String.format(java.util.Locale.US, "%.3f in", l.inches)
+
     companion object {
-        const val VERSION = "1.1.0"
+        const val VERSION = "1.2.0"
     }
 }

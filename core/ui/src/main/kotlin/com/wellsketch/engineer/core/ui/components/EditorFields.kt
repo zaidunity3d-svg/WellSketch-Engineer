@@ -117,7 +117,7 @@ fun TubularPicker(
     modifier: Modifier = Modifier,
 ) {
     val entry = TubularCatalog.match(spec, kind)
-    val connections = if (kind == TubularKind.TUBING) TubularCatalog.TUBING_CONNECTIONS else TubularCatalog.CASING_CONNECTIONS
+    val connections = TubularCatalog.connections(kind)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         ChoiceField(
             label = "Outside diameter (OD)",
@@ -128,7 +128,7 @@ fun TubularPicker(
             onSelect = { od ->
                 val weights = TubularCatalog.weights(kind, od)
                 val pick = weights.firstOrNull { it.nominalWeightLbFt == entry?.nominalWeightLbFt } ?: weights.first()
-                onSpecChange(pick.toSpec(spec.grade, spec.connection?.takeUnless { it == entry?.endFinish }))
+                onSpecChange(pick.toSpec(spec.grade, spec.connection?.takeUnless { it == entry?.endFinish || it == entry?.toolJointConnection }))
             },
         )
         if (entry == null) {
@@ -144,11 +144,11 @@ fun TubularPicker(
             options = TubularCatalog.weights(kind, entry.outerDiameterIn),
             selected = entry,
             optionLabel = { it.weightLabel },
-            onSelect = { e -> onSpecChange(e.toSpec(spec.grade, spec.connection?.takeUnless { it == entry.endFinish })) },
+            onSelect = { e -> onSpecChange(e.toSpec(spec.grade, spec.connection?.takeUnless { it == entry.endFinish || it == entry.toolJointConnection })) },
         )
         ChoiceField(
             label = "Steel grade",
-            options = TubularCatalog.GRADES,
+            options = TubularCatalog.grades(kind),
             selected = spec.grade,
             optionLabel = { it },
             placeholder = "Not selected",
@@ -166,8 +166,15 @@ fun TubularPicker(
         LabeledValue("ID", formatter.diameter(entry.innerDiameter))
         LabeledValue("Drift", entry.drift?.let(formatter::diameter) ?: "Not listed")
         LabeledValue("Capacity", formatter.capacity(TubularGeometry.insideCapacity(entry.innerDiameter)))
+        val jointOd = entry.toolJointOdIn
+        if (jointOd != null) {
+            LabeledValue(
+                "Tool joint (reference)",
+                "${entry.toolJointConnection} – OD ${formatter.diameter(Length.inches(jointOd))}, ID ${formatter.diameter(Length.inches(entry.toolJointIdIn ?: 0.0))}",
+            )
+        }
         Text(
-            "Source: ${entry.sourceUrl} — public API 5CT reference; OEM verification required. " +
+            "Source: ${entry.sourceUrl} — public API ${if (kind == TubularKind.DRILL_PIPE) "5DP" else "5CT"} reference; data sheet / OEM verification required. " +
                 "Grade and connection ratings are not part of this record.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

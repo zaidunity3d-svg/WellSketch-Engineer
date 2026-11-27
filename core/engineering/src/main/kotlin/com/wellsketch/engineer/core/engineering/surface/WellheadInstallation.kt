@@ -46,6 +46,11 @@ object WellheadInstallation {
 
     fun installed(wellhead: Wellhead, state: OperatingState): InstalledWellhead {
         val sections = wellhead.sections
+        // Workover on a completed well: every section is on the well unless a section is entered.
+        if (state is OperatingState.Workover) {
+            val i = sections.indexOfFirst { it.id == state.rigUp.nippledUpOnSectionId }
+            return if (i >= 0) split(sections, i, InstalledSectionsBasis.ENTERED) else InstalledWellhead(sections, emptyList(), InstalledSectionsBasis.ALL_SECTIONS)
+        }
         val rigUp = (state as? OperatingState.Drilling)?.rigUp
         if (rigUp == null || sections.isEmpty()) return InstalledWellhead(sections, emptyList(), InstalledSectionsBasis.ALL_SECTIONS)
 
