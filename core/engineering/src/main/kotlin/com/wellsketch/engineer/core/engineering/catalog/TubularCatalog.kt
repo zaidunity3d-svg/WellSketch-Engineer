@@ -7,7 +7,7 @@ import com.wellsketch.engineer.core.model.units.LinearMass
 import com.wellsketch.engineer.core.model.well.TubularSpec
 import kotlin.math.abs
 
-enum class TubularKind(val label: String) { CASING("Casing / liner"), TUBING("Tubing") }
+enum class TubularKind(val label: String) { CASING("Casing / liner"), TUBING("Tubing"), DRILL_PIPE("Drill pipe") }
 
 /**
  * One OD + nominal weight record of the tubular catalogue, in inches and lb/ft as published.
@@ -22,9 +22,16 @@ data class TubularCatalogEntry(
     val wallIn: Double,
     val innerDiameterIn: Double,
     val driftIn: Double?,
-    /** Tubing end finish (NU non-upset, EU external upset); null for casing. */
+    /** Tubing end finish (NU non-upset, EU external upset) or drill-pipe upset (EU, IU, IEU); null for casing. */
     val endFinish: String?,
     val sourceUrl: String,
+    /**
+     * Drill pipe only: the first E-75 tool joint listed by the source for this pipe (connection,
+     * OD, ID in inches). A reference for clearance checks; the rig's data sheet governs.
+     */
+    val toolJointConnection: String? = null,
+    val toolJointOdIn: Double? = null,
+    val toolJointIdIn: Double? = null,
 ) {
     val outerDiameter: Length get() = Length.inches(outerDiameterIn)
     val innerDiameter: Length get() = Length.inches(innerDiameterIn)
@@ -40,7 +47,11 @@ data class TubularCatalogEntry(
             status = DataStatus.UNVERIFIED,
             source = sourceUrl,
             reference = TubularCatalog.REVISION,
-            notes = "Public API 5CT dimensional reference; OEM verification required. Grade/connection ratings not included.",
+            notes = if (kind == TubularKind.DRILL_PIPE) {
+                "Public API 5DP pipe-body reference; tool joint shown is the source's first E-75 listing. Data sheet required. Ratings not included."
+            } else {
+                "Public API 5CT dimensional reference; OEM verification required. Grade/connection ratings not included."
+            },
         )
 
     /** Tubular specification for a string built from this record and the user's grade/connection. */
@@ -51,7 +62,7 @@ data class TubularCatalogEntry(
         driftDiameter = drift,
         nominalLinearMass = nominalWeight,
         grade = grade?.takeIf { it.isNotBlank() },
-        connection = connection?.takeIf { it.isNotBlank() } ?: endFinish,
+        connection = connection?.takeIf { it.isNotBlank() } ?: toolJointConnection ?: endFinish,
         catalogItemId = id,
         provenance = provenance,
     )
@@ -63,7 +74,8 @@ data class TubularCatalogEntry(
 
 /**
  * Tubular catalogue: the 31 public API 5CT dimensional records of the owner's HTML prototype
- * v0.9 (casing 4-1/2 to 20 in, tubing 2-3/8 to 4-1/2 in), each with its source. These are
+ * v0.9 (casing 4-1/2 to 20 in, tubing 2-3/8 to 4-1/2 in) and 15 public API 5DP drill-pipe
+ * body records (2-3/8 to 5-1/2 in) for workover strings, each with its source. These are
  * reference dimensions, not OEM certificates (status UNVERIFIED until the owner verifies them).
  * The list is meant to grow from the owner's approved sheets.
  */
@@ -76,6 +88,17 @@ object TubularCatalog {
     val GRADES: List<String> = listOf("H40", "J55", "K55", "N80", "L80", "P110", "C90", "T95", "Q125")
     val CASING_CONNECTIONS: List<String> = listOf("STC", "LTC", "BTC", "Premium (OEM check)", "Other (OEM check)")
     val TUBING_CONNECTIONS: List<String> = listOf("NU", "EU", "Premium (OEM check)", "Other (OEM check)")
+    const val SOURCE_DP = "https://www.drillingmanual.com/api-drill-pipes-specifications/"
+    val DRILL_PIPE_GRADES: List<String> = listOf("E-75", "X-95", "G-105", "S-135")
+    val DRILL_PIPE_CONNECTIONS: List<String> = listOf("NC26", "NC31", "NC38", "NC40", "NC46", "NC50", "OH", "FH", "XT57", "Other (data sheet)")
+
+    fun grades(kind: TubularKind): List<String> = if (kind == TubularKind.DRILL_PIPE) DRILL_PIPE_GRADES else GRADES
+
+    fun connections(kind: TubularKind): List<String> = when (kind) {
+        TubularKind.CASING -> CASING_CONNECTIONS
+        TubularKind.TUBING -> TUBING_CONNECTIONS
+        TubularKind.DRILL_PIPE -> DRILL_PIPE_CONNECTIONS
+    }
 
     /** Nominal hole (bit) sizes offered for hole sections, largest first (HTML prototype pick-list), in inches. */
     val BIT_SIZES_IN: List<Double> = listOf(36.0, 30.0, 26.0, 24.0, 22.0, 20.0, 17.5, 16.0, 14.75, 12.25, 9.875, 8.5, 6.125, 6.0)
@@ -83,6 +106,10 @@ object TubularCatalog {
     private fun row(
         id: String, kind: TubularKind, od: Double, weight: Double, wall: Double, idIn: Double, drift: Double?, finish: String?, source: String,
     ) = TubularCatalogEntry(id, kind, od, weight, wall, idIn, drift, finish, source)
+
+    /** Drill pipe body (API 5DP) with the source's first E-75 tool joint. */
+    private fun dp(id: String, od: Double, weight: Double, upset: String, wall: Double, idIn: Double, tj: String, tjOd: Double, tjId: Double) =
+        TubularCatalogEntry(id, TubularKind.DRILL_PIPE, od, weight, wall, idIn, null, upset, SOURCE_DP, tj, tjOd, tjId)
 
     val entries: List<TubularCatalogEntry> = listOf(
         row("c-20-94-api", TubularKind.CASING, 20.0, 94.0, 0.4382, 19.122, 18.9358, null, SOURCE_ZC),
@@ -116,6 +143,22 @@ object TubularCatalog {
         row("t-3p5-12p95-eu", TubularKind.TUBING, 3.5, 12.95, 0.3748, 2.7504, null, "EU", SOURCE_ZC),
         row("t-4p5-12p6-nu", TubularKind.TUBING, 4.5, 12.6, 0.2709, 3.9583, 3.8331, "NU", SOURCE_YIIP),
         row("t-4p5-12p75-eu", TubularKind.TUBING, 4.5, 12.75, 0.2709, 3.9583, null, "EU", SOURCE_ZC),
+        // Drill pipe, API 5DP pipe body; tool joint = first E-75 entry listed by the source.
+        dp("dp-2p375-6p65-eu", 2.375, 6.65, "EU", 0.280, 1.815, "NC26", 3.375, 1.75),
+        dp("dp-2p875-6p85-eu", 2.875, 6.85, "EU", 0.217, 2.441, "NC31", 4.125, 2.15625),
+        dp("dp-2p875-10p4-eu", 2.875, 10.40, "EU", 0.362, 2.151, "NC31", 4.125, 2.125),
+        dp("dp-3p5-9p5-eu", 3.5, 9.50, "EU", 0.254, 2.992, "NC38", 4.75, 2.6875),
+        dp("dp-3p5-13p3-eu", 3.5, 13.30, "EU", 0.368, 2.764, "NC38", 4.75, 2.6875),
+        dp("dp-3p5-15p5-eu", 3.5, 15.50, "EU", 0.449, 2.602, "NC38", 5.0, 2.5625),
+        dp("dp-4-11p85-iu", 4.0, 11.85, "IU", 0.262, 3.476, "NC40", 5.25, 2.8125),
+        dp("dp-4-14-eu", 4.0, 14.00, "EU", 0.330, 3.340, "NC46", 6.0, 3.25),
+        dp("dp-4-15p7-eu", 4.0, 15.70, "EU", 0.380, 3.240, "NC46", 6.0, 3.0),
+        dp("dp-4p5-16p6-eu", 4.5, 16.60, "EU", 0.337, 3.826, "OH", 5.875, 3.75),
+        dp("dp-4p5-20-eu", 4.5, 20.00, "EU", 0.430, 3.640, "OH", 6.0, 3.5),
+        dp("dp-5-19p5-ieu", 5.0, 19.50, "IEU", 0.362, 4.276, "NC50", 6.625, 3.75),
+        dp("dp-5-25p6-ieu", 5.0, 25.60, "IEU", 0.500, 4.000, "NC50", 6.625, 3.5),
+        dp("dp-5p5-21p9-ieu", 5.5, 21.90, "IEU", 0.361, 4.778, "FH", 7.0, 4.0),
+        dp("dp-5p5-24p7-ieu", 5.5, 24.70, "IEU", 0.415, 4.670, "FH", 7.0, 4.0),
     )
 
     fun byId(id: String?): TubularCatalogEntry? = id?.let { k -> entries.firstOrNull { it.id == k } }

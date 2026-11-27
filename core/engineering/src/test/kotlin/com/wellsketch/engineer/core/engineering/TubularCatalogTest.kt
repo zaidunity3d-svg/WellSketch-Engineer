@@ -19,9 +19,10 @@ class TubularCatalogTest {
 
     @Test
     fun catalogueMatchesTheHtmlPrototypeRecords() {
-        assertEquals(31, all.size)
+        assertEquals(46, all.size)
         assertEquals(18, all.count { it.kind == TubularKind.CASING })
         assertEquals(13, all.count { it.kind == TubularKind.TUBING })
+        assertEquals(15, all.count { it.kind == TubularKind.DRILL_PIPE })
         assertEquals(all.size, all.map { it.id }.toSet().size, "ids are unique")
         assertEquals(listOf(20.0, 13.375, 9.625, 7.0, 5.5, 5.0, 4.5), TubularCatalog.outerDiameters(TubularKind.CASING))
         assertEquals(listOf(4.5, 3.5, 2.875, 2.375), TubularCatalog.outerDiameters(TubularKind.TUBING))
@@ -44,6 +45,7 @@ class TubularCatalogTest {
                     else -> 3.0 / 16
                 }
                 TubularKind.TUBING -> if (e.outerDiameterIn <= 2.875) 3.0 / 32 else 1.0 / 8
+                TubularKind.DRILL_PIPE -> continue // API 5DP pipe body lists no drift
             }
             assertEquals(e.innerDiameterIn - allowance, drift, 0.002, e.id)
         }
@@ -55,8 +57,24 @@ class TubularCatalogTest {
         for (e in all) {
             val plainEnd = 10.68 * (e.outerDiameterIn - e.wallIn) * e.wallIn
             val ratio = e.nominalWeightLbFt / plainEnd
-            assertTrue(ratio in 0.98..1.08, "${e.id}: nominal ${e.nominalWeightLbFt} vs plain-end ${"%.2f".format(plainEnd)}")
+            // Drill-pipe nominal (designation) weight is a size label that sits above the plain-end weight.
+            val range = if (e.kind == TubularKind.DRILL_PIPE) 1.0..1.15 else 0.98..1.08
+            assertTrue(ratio in range, "${e.id}: nominal ${e.nominalWeightLbFt} vs plain-end ${"%.2f".format(plainEnd)}")
         }
+    }
+
+    @Test
+    fun drillPipeRowsCarryAPlausibleToolJoint() {
+        val dps = all.filter { it.kind == TubularKind.DRILL_PIPE }
+        assertEquals(listOf(5.5, 5.0, 4.5, 4.0, 3.5, 2.875, 2.375), TubularCatalog.outerDiameters(TubularKind.DRILL_PIPE))
+        for (e in dps) {
+            assertTrue(e.toolJointOdIn!! > e.outerDiameterIn, "${e.id}: tool joint OD above pipe OD")
+            assertTrue(e.toolJointIdIn!! < e.innerDiameterIn, "${e.id}: tool joint ID below pipe ID")
+            assertEquals(TubularCatalog.SOURCE_DP, e.sourceUrl)
+        }
+        val spec = TubularCatalog.byId("dp-3p5-13p3-eu")!!.toSpec("G-105", null)
+        assertEquals("NC38", spec.connection)
+        assertEquals(2.764, spec.innerDiameter.inches, 1e-9)
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.wellsketch.engineer.core.schematic
 import com.wellsketch.engineer.core.engineering.trajectory.TrajectorySource
 import com.wellsketch.engineer.core.engineering.validation.ValidationIssue
 import com.wellsketch.engineer.core.model.ct.CtBhaComponentType
+import com.wellsketch.engineer.core.model.workover.WorkoverToolType
 import com.wellsketch.engineer.core.model.geology.Lithology
 import com.wellsketch.engineer.core.model.surface.DrillingBopComponentType
 import com.wellsketch.engineer.core.model.surface.OutletFitting
@@ -38,6 +39,8 @@ enum class ElementKind(val drawOrder: Int, val hitPriority: Int) {
     COMPLETION_COMPONENT(5, 6),
     CT_WALL(6, 7),
     BHA_COMPONENT(7, 8),
+    WORK_STRING_WALL(6, 7),
+    WORKOVER_TOOL(7, 8),
 }
 
 /** Extra information a renderer needs for styling, keyed to the source model type. */
@@ -48,6 +51,7 @@ sealed interface ElementDetail {
     data class Component(val type: CompletionComponentType) : ElementDetail
     data class Perforation(val status: PerforationStatus) : ElementDetail
     data class Bha(val type: CtBhaComponentType) : ElementDetail
+    data class WorkoverTool(val type: WorkoverToolType) : ElementDetail
 }
 
 /**

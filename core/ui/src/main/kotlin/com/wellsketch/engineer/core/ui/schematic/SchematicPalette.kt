@@ -2,6 +2,7 @@ package com.wellsketch.engineer.core.ui.schematic
 
 import androidx.compose.ui.graphics.Color
 import com.wellsketch.engineer.core.model.ct.CtBhaComponentType
+import com.wellsketch.engineer.core.model.workover.WorkoverToolType
 import com.wellsketch.engineer.core.model.geology.Lithology
 import com.wellsketch.engineer.core.model.well.CasingRole
 import com.wellsketch.engineer.core.model.well.CementStatus
@@ -43,10 +44,12 @@ object SchematicPalette {
             PerforationStatus.SQUEEZED, PerforationStatus.ISOLATED -> Color(0xFF8E8E8E)
         }
         is ElementDetail.Bha -> bhaColor(d.type)
+        is ElementDetail.WorkoverTool -> workoverToolColor(d.type)
         ElementDetail.None -> when (e.kind) {
             ElementKind.OPEN_HOLE -> holeFluid
             ElementKind.TUBING_WALL -> Color(0xFF2E6F9E)
             ElementKind.CT_WALL -> ctLine
+            ElementKind.WORK_STRING_WALL -> Color(0xFF6A4C93)
             else -> Color(0xFF607080)
         }
     }
@@ -60,6 +63,16 @@ object SchematicPalette {
         CompletionComponentType.GAS_LIFT_MANDREL -> Color(0xFF4F7CAC)
         CompletionComponentType.TUBING_HANGER -> Color(0xFF55606B)
         CompletionComponentType.WIRELINE_ENTRY_GUIDE, CompletionComponentType.OTHER -> Color(0xFF6E7B86)
+    }
+
+    private fun workoverToolColor(type: WorkoverToolType): Color = when (type) {
+        WorkoverToolType.PACKER -> Color(0xFF9A3B2E)
+        WorkoverToolType.BRIDGE_PLUG -> Color(0xFF3B3B3B)
+        WorkoverToolType.PERFORATING_GUN -> Color(0xFFD9480F)
+        WorkoverToolType.ESP_PUMP, WorkoverToolType.ESP_INTAKE, WorkoverToolType.ESP_SEAL,
+        WorkoverToolType.ESP_MOTOR, WorkoverToolType.ESP_SENSOR -> Color(0xFF2F7D4F)
+        WorkoverToolType.CEMENT_STINGER -> Color(0xFF8E8676)
+        else -> Color(0xFF8A5A2B)
     }
 
     private fun bhaColor(type: CtBhaComponentType): Color = when (type) {
